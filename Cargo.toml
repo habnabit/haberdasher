@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "haberdasher_rpc",
+    "haberdasherd",
+    "haberdasher_irc_agent",
+]

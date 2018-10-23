@@ -1,0 +1,6 @@
+[package]
+name = "haberdasherd"
+version = "0.1.0"
+authors = ["Aaron Gallagher <_@habnab.it>"]
+
+[dependencies]

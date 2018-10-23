@@ -1,0 +1,6 @@
+[package]
+name = "haberdasher_irc_agent"
+version = "0.1.0"
+authors = ["Aaron Gallagher <_@habnab.it>"]
+
+[dependencies]
