@@ -2,5 +2,18 @@
 name = "haberdasher_irc_agent"
 version = "0.1.0"
 authors = ["Aaron Gallagher <_@habnab.it>"]
+edition = "2018"
 
 [dependencies]
+haberdasher_rpc = { path = "../haberdasher_rpc" }
+grpcio = "0.4.0"
+futures = "0.1.25"
+failure = "0.1.3"
+
+[dependencies.irc]
+git = "https://github.com/aatxe/irc"
+branch = "0.14"
+
+[dependencies.tokio]
+version = "0.1.11"
+features = ["async-await-preview"]

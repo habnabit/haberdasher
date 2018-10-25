@@ -26,7 +26,7 @@ impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl 
     {
         println!("incoming venue updates");
         sink.success(protos::Empty::new());
-        tokio::spawn({
+        ctx.spawn({
             stream
                 .for_each(|v| {
                     println!("update: {:?}", v);
@@ -46,5 +46,6 @@ fn main() {
         .build()
         .unwrap();
     server.start();
+    println!("bound to {:?}", server.bind_addrs());
     tokio::run(futures::empty());
 }
