@@ -25,7 +25,6 @@ impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl 
         sink: grpcio::ClientStreamingSink<protos::Empty>)
     {
         println!("incoming venue updates");
-        sink.success(protos::Empty::new());
         ctx.spawn({
             stream
                 .for_each(|v| {
@@ -33,6 +32,10 @@ impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl 
                     Ok(())
                 })
                 .map_err(|e| println!("error {:?}", e))
+                .then(move |r| {
+                    sink.success(protos::Empty::new());
+                    r
+                })
         });
     }
 }

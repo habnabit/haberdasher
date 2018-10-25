@@ -70,12 +70,11 @@ message Message {
 }
 
 message Venue {
-    bytes id = 1;
     oneof kind {
-        Individual individual = 2;
-        Group group = 3;
-        bool Service = 4;
+        Individual individual = 1;
+        Group group = 2;
+        bool service = 3;
     }
-    Instance instance = 5;
-    Message last_message = 6;
+    Instance instance = 4;
+    Message last_message = 5;
 }

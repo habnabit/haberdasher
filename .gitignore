@@ -1,3 +1,4 @@
 target
 rls
 Cargo.lock
+irc.toml
