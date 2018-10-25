@@ -1,0 +1,81 @@
+syntax = "proto3";
+package haberdasher;
+
+import "google/protobuf/timestamp.proto";
+
+message Empty {}
+
+service AgentSubscriber {
+    rpc Establish (stream AgentResponse) returns (stream AgentRequest);
+    rpc PublishVenueUpdates (stream Venue) returns (Empty);
+}
+
+message AgentRequest {
+    int64 seqno = 1;
+    oneof kind {
+        ListVenuesRequest list_venues = 2;
+    }
+}
+
+message AgentResponse {
+    int64 seqno = 1;
+    oneof kind {
+        AgentErrorResponse error = 2;
+        ListVenuesResponse list_venues = 3;
+    }
+}
+
+message AgentErrorResponse {
+    string message = 1;
+}
+
+message ListVenuesRequest {
+    google.protobuf.Timestamp with_updates_since = 1;
+}
+
+message ListVenuesResponse {
+    repeated Venue venues = 1;
+}
+
+message Instance {
+    bytes id = 1;
+    string name = 2;
+}
+
+message Individual {
+    bytes id = 1;
+    string name = 2;
+}
+
+message Group {
+    bytes id = 1;
+    string name = 2;
+}
+
+message Performer {
+    oneof kind {
+        Individual individual = 1;
+        bool service = 2;
+        bool myself = 3;
+    }
+}
+
+message Message {
+    Performer performer = 1;
+    google.protobuf.Timestamp at = 2;
+    oneof content {
+        string text = 3;
+        string pose = 4;
+    }
+}
+
+message Venue {
+    bytes id = 1;
+    oneof kind {
+        Individual individual = 2;
+        Group group = 3;
+        bool Service = 4;
+    }
+    Instance instance = 5;
+    Message last_message = 6;
+}
