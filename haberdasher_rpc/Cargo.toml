@@ -2,5 +2,11 @@
 name = "haberdasher_rpc"
 version = "0.1.0"
 authors = ["Aaron Gallagher <_@habnab.it>"]
+edition = "2015"  # until capnpc can generate 2018 edition
+build = "build.rs"
 
 [dependencies]
+capnp = "0.9.1"
+
+[build-dependencies]
+capnpc = "0.9.0"
