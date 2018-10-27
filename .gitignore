@@ -1,4 +1,6 @@
 target
 rls
+node_modules
 Cargo.lock
 irc.toml
+.env
