@@ -213,49 +213,72 @@ fn drive_all_networks(venue_tx: futures::sync::mpsc::Sender<protos::Venue>) {
     }
 }
 
-struct PublishDriver {
-    agent_client: rpc::AgentSubscriberClient,
-    buffered: Option<protos::Venue>,
+struct VenuePublisher {
     venue_tx: grpcio::StreamingCallSink<protos::Venue>,
-    venue_rx: futures::sync::mpsc::Receiver<protos::Venue>,
     empty_rx: grpcio::ClientCStreamReceiver<protos::Empty>,
 }
 
+enum VenuePublisherState {
+    New,
+    Awaiting(Box<dyn Future<Item = VenuePublisher, Error = Error> + Send>),
+    Established(VenuePublisher),
+}
+
+impl VenuePublisherState {
+    fn reset(&mut self) {
+        *self = VenuePublisherState::New;
+    }
+
+    fn poll(&mut self, channel: grpcio::Channel) -> Poll<&mut VenuePublisher, Error> {
+        use self::VenuePublisherState::*;
+        loop {
+            match self {
+                New => {
+                    *self = Awaiting(Box::new({
+                        let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
+                        let mut request = protos::EstablishClientRequest::new();
+                        request.set_name("irc".to_owned());
+                        request.set_protocol("irc".to_owned());
+                        agent_client.establish_client_async(&request)?
+                            .and_then(move |_empty| {
+                                agent_client.publish_venue_updates()
+                            })
+                            .map(|(venue_tx, empty_rx)| VenuePublisher { venue_tx, empty_rx })
+                            .map_err(|e| e.into())
+                    }))
+                }
+                Awaiting(fut) => {
+                    let publisher = try_ready!(fut.poll());
+                    *self = Established(publisher);
+                }
+                Established(publisher) => return Ok(Async::Ready(publisher)),
+            }
+        }
+    }
+}
+
+struct PublishDriver {
+    channel: grpcio::Channel,
+    buffered: Option<protos::Venue>,
+    venue_tx: VenuePublisherState,
+    venue_rx: futures::sync::mpsc::Receiver<protos::Venue>,
+}
+
 impl PublishDriver {
-    fn new() -> Result<(futures::sync::mpsc::Sender<protos::Venue>, Self), Error> {
+    fn new() -> (futures::sync::mpsc::Sender<protos::Venue>, Self) {
         let env = std::sync::Arc::new(grpcio::EnvBuilder::new().build());
         let channel = grpcio::ChannelBuilder::new(env)
             .connect("127.0.0.1:42253");
-        let agent_client = rpc::AgentSubscriberClient::new(channel);
         let (venue_remote_tx, venue_rx) = futures::sync::mpsc::channel(125);
-        let (venue_tx, empty_rx) = agent_client.publish_venue_updates()?;
-        Ok((venue_remote_tx, PublishDriver {
-            agent_client, venue_tx, venue_rx, empty_rx,
+        (venue_remote_tx, PublishDriver {
+            channel, venue_rx,
             buffered: None,
-        }))
-    }
-
-    fn reestablish_publication(&mut self) -> Result<(), Error> {
-        let (venue_tx, empty_rx) = self.agent_client.publish_venue_updates()?;
-        self.venue_tx = venue_tx;
-        self.empty_rx = empty_rx;
-        Ok(())
+            venue_tx: VenuePublisherState::New,
+        })
     }
 
     fn poll_errorful(&mut self) -> Poll<(), Error> {
         let mut poll_again = false;
-        match self.empty_rx.poll() {
-            Ok(Async::Ready(_empty)) => {
-                println!("venue publish ended naturally");
-                self.reestablish_publication()?;
-                poll_again = true;
-            }
-            Err(e) => {
-                println!("venue publish ended with error: {:?}", e);
-                self.reestablish_publication()?
-            }
-            Ok(Async::NotReady) => (),
-        }
         if self.buffered.is_none() {
             match self.venue_rx.poll() {
                 Ok(Async::Ready(Some(x))) => {
@@ -267,17 +290,47 @@ impl PublishDriver {
                 Err(()) => unreachable!(),
             }
         }
-        if let Some(item) = self.buffered.take() {
-            match self.venue_tx.start_send((item, Default::default()))? {
-                AsyncSink::NotReady((item, _)) => {
-                    self.buffered = Some(item);
+        let mut reset_venue_tx = false;
+        match self.venue_tx.poll(self.channel.clone())? {
+            Async::Ready(VenuePublisher { venue_tx, empty_rx }) => {
+                let mut item_opt = None;
+                match empty_rx.poll() {
+                    Ok(Async::Ready(_empty)) => {
+                        println!("venue publish ended naturally");
+                        reset_venue_tx = true;
+                    }
+                    Err(e) => {
+                        println!("venue publish ended with error: {:?}", e);
+                        reset_venue_tx = true;
+                    }
+                    Ok(Async::NotReady) => {
+                        item_opt = self.buffered.take();
+                    },
                 }
-                AsyncSink::Ready => {
-                    poll_again = true;
+                if let Some(item) = item_opt {
+                    match venue_tx.start_send((item, Default::default())) {
+                        Ok(AsyncSink::NotReady((item, _))) => {
+                            self.buffered = Some(item);
+                        }
+                        Ok(AsyncSink::Ready) => {
+                            poll_again = true;
+                        }
+                        Err(e) => {
+                            println!("stream send error: {:?}", e);
+                            reset_venue_tx = true;
+                        }
+                    }
+                }
+                if !reset_venue_tx {
+                    let _: Async<()> = venue_tx.poll_complete()?;
                 }
             }
+            Async::NotReady => {}
         }
-        let _: Async<()> = self.venue_tx.poll_complete()?;
+        if reset_venue_tx {
+            self.venue_tx.reset();
+            poll_again = true;
+        }
         Ok(if poll_again { Async::Ready(()) } else { Async::NotReady })
     }
 
@@ -300,7 +353,7 @@ impl Future for PublishDriver {
 }
 
 fn main() {
-    let (venue_tx, driver) = PublishDriver::new().expect("couldn't even start");
+    let (venue_tx, driver) = PublishDriver::new();
     tokio::run(driver.join(future::lazy(move || {
         drive_all_networks(venue_tx);
         Ok(())
