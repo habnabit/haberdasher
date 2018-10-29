@@ -13,6 +13,7 @@
     "dotenv": "^6.1.0",
     "google-protobuf": "^3.6.1",
     "grpc": "^1.15.1",
-    "matrix-js-sdk": "^0.12.1-rc.1"
+    "matrix-js-sdk": "^0.12.1-rc.1",
+    "rxjs": "^6.3.3"
   }
 }
