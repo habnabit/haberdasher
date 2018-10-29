@@ -14,6 +14,9 @@ declare module 'matrix-js-sdk' {
         joinRoom(roomId: string): Promise
         publicRooms(): any
         getDevices(): any
+        getUserId(): string
+        getUser(userid: string): any
+        getAccountData(typ: string): any
     }
 
     export function createClient(options: {

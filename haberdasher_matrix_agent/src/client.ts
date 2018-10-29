@@ -33,29 +33,42 @@ async function main() {
         accessToken: process.env.MATRIX_ACCESS_TOKEN,
         userId: process.env.MATRIX_USER_ID,
     })
+    const roomIdToDmUserId = new Map()
     matrixClient.on('event', (ev) => {
-        console.log('matrix %s', ev.getType())
+        const evType = ev.getType()
+        console.log('matrix %s', evType)
+    })
+    matrixClient.on('accountData', (ev) => {
+        console.log('accountData %s %s', ev.getType(), JSON.stringify(ev.getContent()))
+        if (ev.getType() === 'm.direct') {
+            const userIdToDmRoomId: {[userId: string]: string[]} = ev.getContent()
+            Object.entries(userIdToDmRoomId).forEach(([userId, roomIds]) => {
+                roomIds.forEach((roomId) => {
+                    roomIdToDmUserId.set(roomId, userId)
+                })
+            })
+        }
     })
     matrixClient.on('Room.timeline', async (event, room, toStartOfTimeline) => {
         if (toStartOfTimeline || !room || event.getType() !== 'm.room.message') {
             return
         }
 
-        const group = new protos.Group()
-        group.setId(Buffer.from(room.roomId))
-        group.setName(room.name)
-
         var sender = event.sender
-        const individual = new protos.Individual()
-        individual.setId(Buffer.from(sender.userId))
-        individual.setName(sender.name)
         const performer = new protos.Performer()
-        performer.setIndividual(individual)
+        if (matrixClient.getUserId() === sender.userId) {
+            performer.setMyself(true)
+        } else {
+            const individual = new protos.Individual()
+            individual.setId(Buffer.from(sender.userId))
+            individual.setName(sender.name)
+            performer.setIndividual(individual)
+        }
 
         const at = new timestamp_pb.Timestamp()
         const atMs = event.getTs()
         at.setSeconds((atMs / 1_000) | 0)
-        at.setNanos((atMs % 1_000) * 1_000_000)
+        at.setNanos(((atMs % 1_000) | 0) * 1_000_000)
 
         const content = event.getContent()
         const message = new protos.Message()
@@ -68,10 +81,25 @@ async function main() {
         message.setAt(at)
 
         const venue = new protos.Venue()
-        venue.setGroup(group)
         venue.setLastMessage(message)
-        console.log('sending %s', JSON.stringify(venue.toObject()))
 
+        const dmUserId = roomIdToDmUserId.get(room.roomId)
+        if (dmUserId) {
+            const dmIndividual = new protos.Individual()
+            dmIndividual.setId(Buffer.from(dmUserId))
+            const dmUser = matrixClient.getUser(dmUserId)
+            if (dmUser) {
+                dmIndividual.setName(dmUser.displayName)
+            }
+            venue.setIndividual(dmIndividual)
+        } else {
+            const group = new protos.Group()
+            group.setId(Buffer.from(room.roomId))
+            group.setName(room.name)
+            venue.setGroup(group)
+        }
+
+        console.log('sending %s', JSON.stringify(venue.toObject()))
         stream.write(venue)
     })
 
@@ -79,8 +107,6 @@ async function main() {
         disablePresence: true,
         lazyLoadMembers: true,
     })
-    //const res = await matrixClient.getDevices()
-    //console.log('public rooms %s', JSON.stringify(res))
 }
 
 main()
