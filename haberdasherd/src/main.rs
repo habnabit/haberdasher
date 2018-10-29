@@ -11,7 +11,19 @@ use tokio::prelude::*;
 struct AgentSubscriberImpl;
 
 impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl {
-    fn establish(
+    fn establish_client(
+        &mut self, ctx: grpcio::RpcContext,
+        stream: protos::EstablishClientRequest,
+        sink: grpcio::UnarySink<protos::Empty>)
+    {
+        println!("client established: {:?} {:?}", ctx.peer(), stream);
+        ctx.spawn({
+            sink.success(protos::Empty::new())
+                .map_err(|e| println!("error {:?}", e))
+        });
+    }
+
+    fn handle_agent_requests(
         &mut self, ctx: grpcio::RpcContext,
         stream: grpcio::RequestStream<protos::AgentResponse>,
         sink: grpcio::DuplexSink<protos::AgentRequest>)

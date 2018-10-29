@@ -6,8 +6,14 @@ import "google/protobuf/timestamp.proto";
 message Empty {}
 
 service AgentSubscriber {
-    rpc Establish (stream AgentResponse) returns (stream AgentRequest);
+    rpc EstablishClient (EstablishClientRequest) returns (Empty);
+    rpc HandleAgentRequests (stream AgentResponse) returns (stream AgentRequest);
     rpc PublishVenueUpdates (stream Venue) returns (Empty);
+}
+
+message EstablishClientRequest {
+    string name = 1;
+    string protocol = 2;
 }
 
 message AgentRequest {

@@ -38,6 +38,17 @@ function deserialize_haberdasher_Empty(buffer_arg) {
   return haberdasher_pb.Empty.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
+function serialize_haberdasher_EstablishClientRequest(arg) {
+  if (!(arg instanceof haberdasher_pb.EstablishClientRequest)) {
+    throw new Error('Expected argument of type haberdasher.EstablishClientRequest');
+  }
+  return new Buffer(arg.serializeBinary());
+}
+
+function deserialize_haberdasher_EstablishClientRequest(buffer_arg) {
+  return haberdasher_pb.EstablishClientRequest.deserializeBinary(new Uint8Array(buffer_arg));
+}
+
 function serialize_haberdasher_Venue(arg) {
   if (!(arg instanceof haberdasher_pb.Venue)) {
     throw new Error('Expected argument of type haberdasher.Venue');
@@ -51,8 +62,19 @@ function deserialize_haberdasher_Venue(buffer_arg) {
 
 
 var AgentSubscriberService = exports.AgentSubscriberService = {
-  establish: {
-    path: '/haberdasher.AgentSubscriber/Establish',
+  establishClient: {
+    path: '/haberdasher.AgentSubscriber/EstablishClient',
+    requestStream: false,
+    responseStream: false,
+    requestType: haberdasher_pb.EstablishClientRequest,
+    responseType: haberdasher_pb.Empty,
+    requestSerialize: serialize_haberdasher_EstablishClientRequest,
+    requestDeserialize: deserialize_haberdasher_EstablishClientRequest,
+    responseSerialize: serialize_haberdasher_Empty,
+    responseDeserialize: deserialize_haberdasher_Empty,
+  },
+  handleAgentRequests: {
+    path: '/haberdasher.AgentSubscriber/HandleAgentRequests',
     requestStream: true,
     responseStream: true,
     requestType: haberdasher_pb.AgentResponse,

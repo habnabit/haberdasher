@@ -23,6 +23,31 @@ export namespace Empty {
     }
 }
 
+export class EstablishClientRequest extends jspb.Message { 
+    getName(): string;
+    setName(value: string): void;
+
+    getProtocol(): string;
+    setProtocol(value: string): void;
+
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): EstablishClientRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: EstablishClientRequest): EstablishClientRequest.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: EstablishClientRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): EstablishClientRequest;
+    static deserializeBinaryFromReader(message: EstablishClientRequest, reader: jspb.BinaryReader): EstablishClientRequest;
+}
+
+export namespace EstablishClientRequest {
+    export type AsObject = {
+        name: string,
+        protocol: string,
+    }
+}
+
 export class AgentRequest extends jspb.Message { 
     getSeqno(): number;
     setSeqno(value: number): void;
