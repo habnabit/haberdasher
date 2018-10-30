@@ -13,6 +13,19 @@ use haberdasher_rpc::haberdasher_grpc as rpc;
 use irc::client::prelude::*;
 use tokio::prelude::*;
 
+macro_rules! unready {
+    ($async_save:ident, $e:expr) => {{
+        let e = $e;
+        match &e {
+            Ok(Async::Ready(_)) => {
+                $async_save = Async::Ready(());
+            }
+            _ => {}
+        };
+        e
+    }};
+}
+
 const ZNC_CAPS: &[Capability] = &[
     //Capability::Custom("znc.in/batch"),
     Capability::Custom("znc.in/playback"),
@@ -113,15 +126,12 @@ impl NetworkObserver {
     }
 
     fn poll_errorful(&mut self) -> Poll<(), Error> {
-        let mut poll_again = false;
+        let mut ret = Async::NotReady;
         if self.buffered.is_none() {
-            match self.irc_rx.poll()? {
-                Async::Ready(Some(message)) => {
-                    self.process_message(message);
-                    poll_again = true;
-                }
+            match unready!(ret, self.irc_rx.poll())? {
+                Async::Ready(Some(message)) => self.process_message(message),
                 Async::Ready(None) => bail!("irc stream closed"),
-                Async::NotReady => (),
+                Async::NotReady => {}
             }
         }
         if let Some(item) = self.buffered.take() {
@@ -130,7 +140,7 @@ impl NetworkObserver {
                     self.buffered = Some(item);
                 }
                 AsyncSink::Ready => {
-                    poll_again = true;
+                    ret = Async::Ready(());
                 }
             }
         }
@@ -139,7 +149,7 @@ impl NetworkObserver {
             Async::Ready(()) => bail!("irc driver finished"),
             Async::NotReady => (),
         }
-        Ok(if poll_again { Async::Ready(()) } else { Async::NotReady })
+        Ok(ret)
     }
 
     fn poll_loop(&mut self) -> Poll<(), Error> {
@@ -218,6 +228,42 @@ struct VenuePublisher {
     empty_rx: grpcio::ClientCStreamReceiver<protos::Empty>,
 }
 
+impl VenuePublisher {
+    fn poll(&mut self, buffered: &mut Option<protos::Venue>) -> Poll<(), ()> {
+        match self.empty_rx.poll() {
+            Ok(Async::Ready(_empty)) => {
+                println!("venue publish ended naturally");
+                return Err(());
+            }
+            Err(e) => {
+                println!("venue publish ended with error: {:?}", e);
+                return Err(());
+            }
+            Ok(Async::NotReady) => {}
+        }
+        if let Some(item) = buffered.take() {
+            match self.venue_tx.start_send((item, Default::default())) {
+                Ok(AsyncSink::NotReady((item, _))) => {
+                    *buffered = Some(item);
+                }
+                Ok(AsyncSink::Ready) => {}
+                Err(e) => {
+                    println!("stream send error: {:?}", e);
+                    return Err(());
+                }
+            }
+        }
+        match self.venue_tx.poll_complete() {
+            Ok(_) if buffered.is_none() => Ok(Async::NotReady),
+            Ok(o) => Ok(o),
+            Err(e) => {
+                println!("stream flush error: {:?}", e);
+                Err(())
+            }
+        }
+    }
+}
+
 enum VenuePublisherState {
     New,
     Awaiting(Box<dyn Future<Item = VenuePublisher, Error = Error> + Send>),
@@ -225,34 +271,53 @@ enum VenuePublisherState {
 }
 
 impl VenuePublisherState {
-    fn reset(&mut self) {
-        *self = VenuePublisherState::New;
+    fn poll(&mut self, channel: &grpcio::Channel, buffered: &mut Option<protos::Venue>) -> Poll<(), Error> {
+        use self::VenuePublisherState::*;
+        match self {
+            New => {
+                *self = Awaiting(Box::new({
+                    let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
+                    let mut request = protos::EstablishClientRequest::new();
+                    request.set_name("irc".to_owned());
+                    request.set_protocol("irc".to_owned());
+                    future::result(agent_client.establish_client_async(&request))
+                        .and_then(|fut| fut)
+                        .and_then(move |_empty| {
+                            agent_client.publish_venue_updates()
+                        })
+                        .map(|(venue_tx, empty_rx)| VenuePublisher { venue_tx, empty_rx })
+                        .map_err(|e| e.into())
+                }));
+                Ok(Async::Ready(()))
+            }
+            Awaiting(fut) => match fut.poll() {
+                Ok(Async::Ready(publisher)) => {
+                    *self = Established(publisher);
+                    Ok(Async::Ready(()))
+                }
+                Ok(Async::NotReady) => {
+                    *buffered = None;
+                    Ok(Async::NotReady)
+                }
+                Err(e) => {
+                    println!("stream establish: {:?}", e);
+                    *self = New;
+                    Ok(Async::Ready(()))
+                }
+            }
+            Established(publisher) => match publisher.poll(buffered) {
+                Ok(o) => Ok(o),
+                Err(()) => {
+                    *self = New;
+                    Ok(Async::Ready(()))
+                }
+            }
+        }
     }
 
-    fn poll(&mut self, channel: grpcio::Channel) -> Poll<&mut VenuePublisher, Error> {
-        use self::VenuePublisherState::*;
+    fn poll_loop(&mut self, channel: &grpcio::Channel, buffered: &mut Option<protos::Venue>) -> Poll<(), Error> {
         loop {
-            match self {
-                New => {
-                    *self = Awaiting(Box::new({
-                        let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
-                        let mut request = protos::EstablishClientRequest::new();
-                        request.set_name("irc".to_owned());
-                        request.set_protocol("irc".to_owned());
-                        agent_client.establish_client_async(&request)?
-                            .and_then(move |_empty| {
-                                agent_client.publish_venue_updates()
-                            })
-                            .map(|(venue_tx, empty_rx)| VenuePublisher { venue_tx, empty_rx })
-                            .map_err(|e| e.into())
-                    }))
-                }
-                Awaiting(fut) => {
-                    let publisher = try_ready!(fut.poll());
-                    *self = Established(publisher);
-                }
-                Established(publisher) => return Ok(Async::Ready(publisher)),
-            }
+            let () = try_ready!(self.poll(channel, buffered));
         }
     }
 }
@@ -278,60 +343,19 @@ impl PublishDriver {
     }
 
     fn poll_errorful(&mut self) -> Poll<(), Error> {
-        let mut poll_again = false;
+        let mut ret = Async::NotReady;
         if self.buffered.is_none() {
-            match self.venue_rx.poll() {
+            match unready!(ret, self.venue_rx.poll()) {
                 Ok(Async::Ready(Some(x))) => {
                     self.buffered = Some(x);
-                    poll_again = true;
                 }
-                Ok(Async::NotReady) => (),
+                Ok(Async::NotReady) => {}
                 Ok(Async::Ready(None)) |
                 Err(()) => unreachable!(),
             }
         }
-        let mut reset_venue_tx = false;
-        match self.venue_tx.poll(self.channel.clone())? {
-            Async::Ready(VenuePublisher { venue_tx, empty_rx }) => {
-                let mut item_opt = None;
-                match empty_rx.poll() {
-                    Ok(Async::Ready(_empty)) => {
-                        println!("venue publish ended naturally");
-                        reset_venue_tx = true;
-                    }
-                    Err(e) => {
-                        println!("venue publish ended with error: {:?}", e);
-                        reset_venue_tx = true;
-                    }
-                    Ok(Async::NotReady) => {
-                        item_opt = self.buffered.take();
-                    },
-                }
-                if let Some(item) = item_opt {
-                    match venue_tx.start_send((item, Default::default())) {
-                        Ok(AsyncSink::NotReady((item, _))) => {
-                            self.buffered = Some(item);
-                        }
-                        Ok(AsyncSink::Ready) => {
-                            poll_again = true;
-                        }
-                        Err(e) => {
-                            println!("stream send error: {:?}", e);
-                            reset_venue_tx = true;
-                        }
-                    }
-                }
-                if !reset_venue_tx {
-                    let _: Async<()> = venue_tx.poll_complete()?;
-                }
-            }
-            Async::NotReady => {}
-        }
-        if reset_venue_tx {
-            self.venue_tx.reset();
-            poll_again = true;
-        }
-        Ok(if poll_again { Async::Ready(()) } else { Async::NotReady })
+        let _: Async<()> = unready!(ret, self.venue_tx.poll_loop(&self.channel, &mut self.buffered))?;
+        Ok(ret)
     }
 
     fn poll_loop(&mut self) -> Poll<(), Error> {
