@@ -6,14 +6,18 @@ import "google/protobuf/timestamp.proto";
 message Empty {}
 
 service AgentSubscriber {
-    rpc EstablishClient (EstablishClientRequest) returns (Empty);
+    rpc EstablishAgent (EstablishAgentRequest) returns (Empty);
     rpc HandleAgentRequests (stream AgentResponse) returns (stream AgentRequest);
     rpc PublishVenueUpdates (stream Venue) returns (Empty);
 }
 
-message EstablishClientRequest {
-    string name = 1;
-    string protocol = 2;
+service AgentAggregator {
+    rpc SubscribeToVenueUpdates (Empty) returns (stream Venue);
+}
+
+message EstablishAgentRequest {
+    Agent agent = 1;
+    string token = 2;
 }
 
 message AgentRequest {
@@ -43,18 +47,23 @@ message ListVenuesResponse {
     repeated Venue venues = 1;
 }
 
+message Agent {
+    string name = 1;
+    string version = 2;
+    string revision = 3;
+}
+
 message Instance {
-    bytes id = 1;
-    string name = 2;
+    repeated string path = 1;
 }
 
 message Individual {
-    bytes id = 1;
+    string id = 1;
     string name = 2;
 }
 
 message Group {
-    bytes id = 1;
+    string id = 1;
     string name = 2;
 }
 

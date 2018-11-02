@@ -38,15 +38,15 @@ function deserialize_haberdasher_Empty(buffer_arg) {
   return haberdasher_pb.Empty.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
-function serialize_haberdasher_EstablishClientRequest(arg) {
-  if (!(arg instanceof haberdasher_pb.EstablishClientRequest)) {
-    throw new Error('Expected argument of type haberdasher.EstablishClientRequest');
+function serialize_haberdasher_EstablishAgentRequest(arg) {
+  if (!(arg instanceof haberdasher_pb.EstablishAgentRequest)) {
+    throw new Error('Expected argument of type haberdasher.EstablishAgentRequest');
   }
   return new Buffer(arg.serializeBinary());
 }
 
-function deserialize_haberdasher_EstablishClientRequest(buffer_arg) {
-  return haberdasher_pb.EstablishClientRequest.deserializeBinary(new Uint8Array(buffer_arg));
+function deserialize_haberdasher_EstablishAgentRequest(buffer_arg) {
+  return haberdasher_pb.EstablishAgentRequest.deserializeBinary(new Uint8Array(buffer_arg));
 }
 
 function serialize_haberdasher_Venue(arg) {
@@ -62,14 +62,14 @@ function deserialize_haberdasher_Venue(buffer_arg) {
 
 
 var AgentSubscriberService = exports.AgentSubscriberService = {
-  establishClient: {
-    path: '/haberdasher.AgentSubscriber/EstablishClient',
+  establishAgent: {
+    path: '/haberdasher.AgentSubscriber/EstablishAgent',
     requestStream: false,
     responseStream: false,
-    requestType: haberdasher_pb.EstablishClientRequest,
+    requestType: haberdasher_pb.EstablishAgentRequest,
     responseType: haberdasher_pb.Empty,
-    requestSerialize: serialize_haberdasher_EstablishClientRequest,
-    requestDeserialize: deserialize_haberdasher_EstablishClientRequest,
+    requestSerialize: serialize_haberdasher_EstablishAgentRequest,
+    requestDeserialize: deserialize_haberdasher_EstablishAgentRequest,
     responseSerialize: serialize_haberdasher_Empty,
     responseDeserialize: deserialize_haberdasher_Empty,
   },
@@ -98,3 +98,18 @@ var AgentSubscriberService = exports.AgentSubscriberService = {
 };
 
 exports.AgentSubscriberClient = grpc.makeGenericClientConstructor(AgentSubscriberService);
+var AgentAggregatorService = exports.AgentAggregatorService = {
+  subscribeToVenueUpdates: {
+    path: '/haberdasher.AgentAggregator/SubscribeToVenueUpdates',
+    requestStream: false,
+    responseStream: true,
+    requestType: haberdasher_pb.Empty,
+    responseType: haberdasher_pb.Venue,
+    requestSerialize: serialize_haberdasher_Empty,
+    requestDeserialize: deserialize_haberdasher_Empty,
+    responseSerialize: serialize_haberdasher_Venue,
+    responseDeserialize: deserialize_haberdasher_Venue,
+  },
+};
+
+exports.AgentAggregatorClient = grpc.makeGenericClientConstructor(AgentAggregatorService);

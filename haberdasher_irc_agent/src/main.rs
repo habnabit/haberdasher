@@ -11,6 +11,7 @@ use failure::Error;
 use haberdasher_rpc::haberdasher as protos;
 use haberdasher_rpc::haberdasher_grpc as rpc;
 use irc::client::prelude::*;
+use serde::Deserialize;
 use tokio::prelude::*;
 
 macro_rules! unready {
@@ -26,6 +27,23 @@ macro_rules! unready {
     }};
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct HaberdasherConfig {
+    token: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ZncConfig {
+    networks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct AgentConfig {
+    haberdasher: HaberdasherConfig,
+    znc: ZncConfig,
+    irc: Config,
+}
+
 const ZNC_CAPS: &[Capability] = &[
     //Capability::Custom("znc.in/batch"),
     Capability::Custom("znc.in/playback"),
@@ -34,7 +52,6 @@ const ZNC_CAPS: &[Capability] = &[
 
 struct NetworkObserver {
     packed_client: irc::client::PackedIrcClient,
-    network: String,
     instance: protos::Instance,
     my_nick: String,
     venue_tx: futures::sync::mpsc::Sender<protos::Venue>,
@@ -54,12 +71,12 @@ impl NetworkObserver {
         let client_fut = IrcClient::new_future(config)?;
         let packed_client = await!(client_fut)?;
         let irc_rx = packed_client.0.stream();
-        let network = network_opt.unwrap_or("").to_owned();
         let mut instance = protos::Instance::new();
-        instance.set_name(network.clone());
-        instance.set_id(network.as_bytes().to_owned());
+        if let Some(network) = network_opt {
+            instance.mut_path().push(network.to_owned());
+        }
         Ok(NetworkObserver {
-            packed_client, network, instance, venue_tx, irc_rx,
+            packed_client, instance, venue_tx, irc_rx,
             my_nick: "".to_owned(),
             buffered: None,
         })
@@ -87,7 +104,7 @@ impl NetworkObserver {
         let from = msg.source_nickname().expect("should have nick");
         let mut from_individual = protos::Individual::new();
         from_individual.set_name(from.to_owned());
-        from_individual.set_id(from.as_bytes().to_owned());
+        from_individual.set_id(from.to_owned());
         let is_pm = Some(from) == msg.response_target();
         let mut venue = protos::Venue::new();
         if is_pm {
@@ -95,7 +112,7 @@ impl NetworkObserver {
         } else {
             let group = venue.mut_group();
             group.set_name(to.to_owned());
-            group.set_id(to.as_bytes().to_owned());
+            group.set_id(to.to_owned());
         }
         {
             let last = venue.mut_last_message();
@@ -165,7 +182,7 @@ impl Future for NetworkObserver {
 
     fn poll(&mut self) -> Poll<(), ()> {
         self.poll_loop().map_err(|e| {
-            println!("error observing network {:?}/{:?}: {:?}", self.network, self.my_nick, e);
+            println!("error observing network {:?}/{:?}: {:?}", self.instance, self.my_nick, e);
         })
     }
 }
@@ -204,15 +221,21 @@ async fn drive_one_network(config: Config, network_opt: Option<String>, venue_tx
     }
 }
 
-fn drive_all_networks(venue_tx: futures::sync::mpsc::Sender<protos::Venue>) {
-    let mut config = Config::load("irc.toml").expect("couldn't load config");
+fn load_config() -> Result<AgentConfig, Error> {
+    let mut infile = std::fs::File::open("irc.toml")?;
+    let mut content = String::new();
+    infile.read_to_string(&mut content)?;
+    Ok(toml::from_str(&content)?)
+}
+
+fn drive_all_networks(config: Config, networks: Vec<String>, venue_tx: futures::sync::mpsc::Sender<protos::Venue>) {
     let mut futures = vec![];
-    if let Some(networks) = config.alt_nicks.take() {
+    if networks.is_empty() {
+        futures.push(drive_one_network(config, None, venue_tx));
+    } else {
         for network in networks {
             futures.push(drive_one_network(config.clone(), Some(network), venue_tx.clone()));
         }
-    } else {
-        futures.push(drive_one_network(config, None, venue_tx));
     }
     for fut in futures {
         tokio::spawn_async(async {
@@ -262,48 +285,23 @@ impl VenuePublisher {
             }
         }
     }
+
 }
+
+type VenuePublisherInstantiator<'a> = &'a dyn Fn() -> Result<VenuePublisher, Error>;
 
 enum VenuePublisherState {
     New,
-    Awaiting(Box<dyn Future<Item = VenuePublisher, Error = Error> + Send>),
     Established(VenuePublisher),
 }
 
 impl VenuePublisherState {
-    fn poll(&mut self, channel: &grpcio::Channel, buffered: &mut Option<protos::Venue>) -> Poll<(), Error> {
+    fn poll(&mut self, inst: VenuePublisherInstantiator, buffered: &mut Option<protos::Venue>) -> Poll<(), Error> {
         use self::VenuePublisherState::*;
         match self {
             New => {
-                *self = Awaiting(Box::new({
-                    let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
-                    let mut request = protos::EstablishClientRequest::new();
-                    request.set_name("irc".to_owned());
-                    request.set_protocol("irc".to_owned());
-                    future::result(agent_client.establish_client_async(&request))
-                        .and_then(|fut| fut)
-                        .and_then(move |_empty| {
-                            agent_client.publish_venue_updates()
-                        })
-                        .map(|(venue_tx, empty_rx)| VenuePublisher { venue_tx, empty_rx })
-                        .map_err(|e| e.into())
-                }));
+                *self = Established(inst()?);
                 Ok(Async::Ready(()))
-            }
-            Awaiting(fut) => match fut.poll() {
-                Ok(Async::Ready(publisher)) => {
-                    *self = Established(publisher);
-                    Ok(Async::Ready(()))
-                }
-                Ok(Async::NotReady) => {
-                    *buffered = None;
-                    Ok(Async::NotReady)
-                }
-                Err(e) => {
-                    println!("stream establish: {:?}", e);
-                    *self = New;
-                    Ok(Async::Ready(()))
-                }
             }
             Established(publisher) => match publisher.poll(buffered) {
                 Ok(o) => Ok(o),
@@ -315,28 +313,29 @@ impl VenuePublisherState {
         }
     }
 
-    fn poll_loop(&mut self, channel: &grpcio::Channel, buffered: &mut Option<protos::Venue>) -> Poll<(), Error> {
+    fn poll_loop(&mut self, inst: VenuePublisherInstantiator, buffered: &mut Option<protos::Venue>) -> Poll<(), Error> {
         loop {
-            let () = try_ready!(self.poll(channel, buffered));
+            let () = try_ready!(self.poll(inst, buffered));
         }
     }
 }
 
 struct PublishDriver {
     channel: grpcio::Channel,
+    access_token: String,
     buffered: Option<protos::Venue>,
     venue_tx: VenuePublisherState,
     venue_rx: futures::sync::mpsc::Receiver<protos::Venue>,
 }
 
 impl PublishDriver {
-    fn new() -> (futures::sync::mpsc::Sender<protos::Venue>, Self) {
+    fn new(access_token: String) -> (futures::sync::mpsc::Sender<protos::Venue>, Self) {
         let env = std::sync::Arc::new(grpcio::EnvBuilder::new().build());
         let channel = grpcio::ChannelBuilder::new(env)
             .connect("127.0.0.1:42253");
         let (venue_remote_tx, venue_rx) = futures::sync::mpsc::channel(125);
         (venue_remote_tx, PublishDriver {
-            channel, venue_rx,
+            channel, access_token, venue_rx,
             buffered: None,
             venue_tx: VenuePublisherState::New,
         })
@@ -354,7 +353,19 @@ impl PublishDriver {
                 Err(()) => unreachable!(),
             }
         }
-        let _: Async<()> = unready!(ret, self.venue_tx.poll_loop(&self.channel, &mut self.buffered))?;
+        {
+            let PublishDriver { channel, access_token, buffered, .. } = self;
+            let inst = || {
+                let mut builder = grpcio::MetadataBuilder::new();
+                builder.add_str("access-token", &access_token.clone())?;
+                let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
+                let call_opts = <grpcio::CallOption as Default>::default()
+                    .headers(builder.build());
+                let (venue_tx, empty_rx) = agent_client.publish_venue_updates_opt(call_opts)?;
+                Ok(VenuePublisher { venue_tx, empty_rx })
+            };
+            let _: Async<()> = unready!(ret, self.venue_tx.poll_loop(&inst, buffered))?;
+        }
         Ok(ret)
     }
 
@@ -377,9 +388,12 @@ impl Future for PublishDriver {
 }
 
 fn main() {
-    let (venue_tx, driver) = PublishDriver::new();
-    tokio::run(driver.join(future::lazy(move || {
-        drive_all_networks(venue_tx);
-        Ok(())
-    })).map(|((), ())| ()));
+    tokio::run(future::lazy(move || {
+        let config = load_config().map_err(|e| {
+            println!("error loading config: {:?}", e);
+        })?;
+        let (venue_tx, driver) = PublishDriver::new(config.haberdasher.token);
+        drive_all_networks(config.irc, config.znc.networks, venue_tx);
+        Ok(driver)
+    }).and_then(|fut| fut));
 }

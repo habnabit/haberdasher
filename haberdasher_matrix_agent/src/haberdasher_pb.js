@@ -12,11 +12,12 @@ var goog = jspb;
 var global = Function('return this')();
 
 var google_protobuf_timestamp_pb = require('google-protobuf/google/protobuf/timestamp_pb.js');
+goog.exportSymbol('proto.haberdasher.Agent', null, global);
 goog.exportSymbol('proto.haberdasher.AgentErrorResponse', null, global);
 goog.exportSymbol('proto.haberdasher.AgentRequest', null, global);
 goog.exportSymbol('proto.haberdasher.AgentResponse', null, global);
 goog.exportSymbol('proto.haberdasher.Empty', null, global);
-goog.exportSymbol('proto.haberdasher.EstablishClientRequest', null, global);
+goog.exportSymbol('proto.haberdasher.EstablishAgentRequest', null, global);
 goog.exportSymbol('proto.haberdasher.Group', null, global);
 goog.exportSymbol('proto.haberdasher.Individual', null, global);
 goog.exportSymbol('proto.haberdasher.Instance', null, global);
@@ -152,12 +153,12 @@ proto.haberdasher.Empty.serializeBinaryToWriter = function(message, writer) {
  * @extends {jspb.Message}
  * @constructor
  */
-proto.haberdasher.EstablishClientRequest = function(opt_data) {
+proto.haberdasher.EstablishAgentRequest = function(opt_data) {
   jspb.Message.initialize(this, opt_data, 0, -1, null, null);
 };
-goog.inherits(proto.haberdasher.EstablishClientRequest, jspb.Message);
+goog.inherits(proto.haberdasher.EstablishAgentRequest, jspb.Message);
 if (goog.DEBUG && !COMPILED) {
-  proto.haberdasher.EstablishClientRequest.displayName = 'proto.haberdasher.EstablishClientRequest';
+  proto.haberdasher.EstablishAgentRequest.displayName = 'proto.haberdasher.EstablishAgentRequest';
 }
 
 
@@ -172,8 +173,8 @@ if (jspb.Message.GENERATE_TO_OBJECT) {
  *     for transitional soy proto support: http://goto/soy-param-migration
  * @return {!Object}
  */
-proto.haberdasher.EstablishClientRequest.prototype.toObject = function(opt_includeInstance) {
-  return proto.haberdasher.EstablishClientRequest.toObject(opt_includeInstance, this);
+proto.haberdasher.EstablishAgentRequest.prototype.toObject = function(opt_includeInstance) {
+  return proto.haberdasher.EstablishAgentRequest.toObject(opt_includeInstance, this);
 };
 
 
@@ -182,14 +183,14 @@ proto.haberdasher.EstablishClientRequest.prototype.toObject = function(opt_inclu
  * @param {boolean|undefined} includeInstance Whether to include the JSPB
  *     instance for transitional soy proto support:
  *     http://goto/soy-param-migration
- * @param {!proto.haberdasher.EstablishClientRequest} msg The msg instance to transform.
+ * @param {!proto.haberdasher.EstablishAgentRequest} msg The msg instance to transform.
  * @return {!Object}
  * @suppress {unusedLocalVariables} f is only used for nested messages
  */
-proto.haberdasher.EstablishClientRequest.toObject = function(includeInstance, msg) {
+proto.haberdasher.EstablishAgentRequest.toObject = function(includeInstance, msg) {
   var f, obj = {
-    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
-    protocol: jspb.Message.getFieldWithDefault(msg, 2, "")
+    agent: (f = msg.getAgent()) && proto.haberdasher.Agent.toObject(includeInstance, f),
+    token: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
   if (includeInstance) {
@@ -203,23 +204,23 @@ proto.haberdasher.EstablishClientRequest.toObject = function(includeInstance, ms
 /**
  * Deserializes binary data (in protobuf wire format).
  * @param {jspb.ByteSource} bytes The bytes to deserialize.
- * @return {!proto.haberdasher.EstablishClientRequest}
+ * @return {!proto.haberdasher.EstablishAgentRequest}
  */
-proto.haberdasher.EstablishClientRequest.deserializeBinary = function(bytes) {
+proto.haberdasher.EstablishAgentRequest.deserializeBinary = function(bytes) {
   var reader = new jspb.BinaryReader(bytes);
-  var msg = new proto.haberdasher.EstablishClientRequest;
-  return proto.haberdasher.EstablishClientRequest.deserializeBinaryFromReader(msg, reader);
+  var msg = new proto.haberdasher.EstablishAgentRequest;
+  return proto.haberdasher.EstablishAgentRequest.deserializeBinaryFromReader(msg, reader);
 };
 
 
 /**
  * Deserializes binary data (in protobuf wire format) from the
  * given reader into the given message object.
- * @param {!proto.haberdasher.EstablishClientRequest} msg The message object to deserialize into.
+ * @param {!proto.haberdasher.EstablishAgentRequest} msg The message object to deserialize into.
  * @param {!jspb.BinaryReader} reader The BinaryReader to use.
- * @return {!proto.haberdasher.EstablishClientRequest}
+ * @return {!proto.haberdasher.EstablishAgentRequest}
  */
-proto.haberdasher.EstablishClientRequest.deserializeBinaryFromReader = function(msg, reader) {
+proto.haberdasher.EstablishAgentRequest.deserializeBinaryFromReader = function(msg, reader) {
   while (reader.nextField()) {
     if (reader.isEndGroup()) {
       break;
@@ -227,12 +228,13 @@ proto.haberdasher.EstablishClientRequest.deserializeBinaryFromReader = function(
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {string} */ (reader.readString());
-      msg.setName(value);
+      var value = new proto.haberdasher.Agent;
+      reader.readMessage(value,proto.haberdasher.Agent.deserializeBinaryFromReader);
+      msg.setAgent(value);
       break;
     case 2:
       var value = /** @type {string} */ (reader.readString());
-      msg.setProtocol(value);
+      msg.setToken(value);
       break;
     default:
       reader.skipField();
@@ -247,9 +249,9 @@ proto.haberdasher.EstablishClientRequest.deserializeBinaryFromReader = function(
  * Serializes the message to binary data (in protobuf wire format).
  * @return {!Uint8Array}
  */
-proto.haberdasher.EstablishClientRequest.prototype.serializeBinary = function() {
+proto.haberdasher.EstablishAgentRequest.prototype.serializeBinary = function() {
   var writer = new jspb.BinaryWriter();
-  proto.haberdasher.EstablishClientRequest.serializeBinaryToWriter(this, writer);
+  proto.haberdasher.EstablishAgentRequest.serializeBinaryToWriter(this, writer);
   return writer.getResultBuffer();
 };
 
@@ -257,20 +259,21 @@ proto.haberdasher.EstablishClientRequest.prototype.serializeBinary = function() 
 /**
  * Serializes the given message to binary data (in protobuf wire
  * format), writing to the given BinaryWriter.
- * @param {!proto.haberdasher.EstablishClientRequest} message
+ * @param {!proto.haberdasher.EstablishAgentRequest} message
  * @param {!jspb.BinaryWriter} writer
  * @suppress {unusedLocalVariables} f is only used for nested messages
  */
-proto.haberdasher.EstablishClientRequest.serializeBinaryToWriter = function(message, writer) {
+proto.haberdasher.EstablishAgentRequest.serializeBinaryToWriter = function(message, writer) {
   var f = undefined;
-  f = message.getName();
-  if (f.length > 0) {
-    writer.writeString(
+  f = message.getAgent();
+  if (f != null) {
+    writer.writeMessage(
       1,
-      f
+      f,
+      proto.haberdasher.Agent.serializeBinaryToWriter
     );
   }
-  f = message.getProtocol();
+  f = message.getToken();
   if (f.length > 0) {
     writer.writeString(
       2,
@@ -281,31 +284,46 @@ proto.haberdasher.EstablishClientRequest.serializeBinaryToWriter = function(mess
 
 
 /**
- * optional string name = 1;
- * @return {string}
+ * optional Agent agent = 1;
+ * @return {?proto.haberdasher.Agent}
  */
-proto.haberdasher.EstablishClientRequest.prototype.getName = function() {
-  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
+proto.haberdasher.EstablishAgentRequest.prototype.getAgent = function() {
+  return /** @type{?proto.haberdasher.Agent} */ (
+    jspb.Message.getWrapperField(this, proto.haberdasher.Agent, 1));
 };
 
 
-/** @param {string} value */
-proto.haberdasher.EstablishClientRequest.prototype.setName = function(value) {
-  jspb.Message.setProto3StringField(this, 1, value);
+/** @param {?proto.haberdasher.Agent|undefined} value */
+proto.haberdasher.EstablishAgentRequest.prototype.setAgent = function(value) {
+  jspb.Message.setWrapperField(this, 1, value);
+};
+
+
+proto.haberdasher.EstablishAgentRequest.prototype.clearAgent = function() {
+  this.setAgent(undefined);
 };
 
 
 /**
- * optional string protocol = 2;
+ * Returns whether this field is set.
+ * @return {!boolean}
+ */
+proto.haberdasher.EstablishAgentRequest.prototype.hasAgent = function() {
+  return jspb.Message.getField(this, 1) != null;
+};
+
+
+/**
+ * optional string token = 2;
  * @return {string}
  */
-proto.haberdasher.EstablishClientRequest.prototype.getProtocol = function() {
+proto.haberdasher.EstablishAgentRequest.prototype.getToken = function() {
   return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 2, ""));
 };
 
 
 /** @param {string} value */
-proto.haberdasher.EstablishClientRequest.prototype.setProtocol = function(value) {
+proto.haberdasher.EstablishAgentRequest.prototype.setToken = function(value) {
   jspb.Message.setProto3StringField(this, 2, value);
 };
 
@@ -1257,13 +1275,216 @@ proto.haberdasher.ListVenuesResponse.prototype.clearVenuesList = function() {
  * @extends {jspb.Message}
  * @constructor
  */
-proto.haberdasher.Instance = function(opt_data) {
+proto.haberdasher.Agent = function(opt_data) {
   jspb.Message.initialize(this, opt_data, 0, -1, null, null);
+};
+goog.inherits(proto.haberdasher.Agent, jspb.Message);
+if (goog.DEBUG && !COMPILED) {
+  proto.haberdasher.Agent.displayName = 'proto.haberdasher.Agent';
+}
+
+
+if (jspb.Message.GENERATE_TO_OBJECT) {
+/**
+ * Creates an object representation of this proto suitable for use in Soy templates.
+ * Field names that are reserved in JavaScript and will be renamed to pb_name.
+ * To access a reserved field use, foo.pb_<name>, eg, foo.pb_default.
+ * For the list of reserved names please see:
+ *     com.google.apps.jspb.JsClassTemplate.JS_RESERVED_WORDS.
+ * @param {boolean=} opt_includeInstance Whether to include the JSPB instance
+ *     for transitional soy proto support: http://goto/soy-param-migration
+ * @return {!Object}
+ */
+proto.haberdasher.Agent.prototype.toObject = function(opt_includeInstance) {
+  return proto.haberdasher.Agent.toObject(opt_includeInstance, this);
+};
+
+
+/**
+ * Static version of the {@see toObject} method.
+ * @param {boolean|undefined} includeInstance Whether to include the JSPB
+ *     instance for transitional soy proto support:
+ *     http://goto/soy-param-migration
+ * @param {!proto.haberdasher.Agent} msg The msg instance to transform.
+ * @return {!Object}
+ * @suppress {unusedLocalVariables} f is only used for nested messages
+ */
+proto.haberdasher.Agent.toObject = function(includeInstance, msg) {
+  var f, obj = {
+    name: jspb.Message.getFieldWithDefault(msg, 1, ""),
+    version: jspb.Message.getFieldWithDefault(msg, 2, ""),
+    revision: jspb.Message.getFieldWithDefault(msg, 3, "")
+  };
+
+  if (includeInstance) {
+    obj.$jspbMessageInstance = msg;
+  }
+  return obj;
+};
+}
+
+
+/**
+ * Deserializes binary data (in protobuf wire format).
+ * @param {jspb.ByteSource} bytes The bytes to deserialize.
+ * @return {!proto.haberdasher.Agent}
+ */
+proto.haberdasher.Agent.deserializeBinary = function(bytes) {
+  var reader = new jspb.BinaryReader(bytes);
+  var msg = new proto.haberdasher.Agent;
+  return proto.haberdasher.Agent.deserializeBinaryFromReader(msg, reader);
+};
+
+
+/**
+ * Deserializes binary data (in protobuf wire format) from the
+ * given reader into the given message object.
+ * @param {!proto.haberdasher.Agent} msg The message object to deserialize into.
+ * @param {!jspb.BinaryReader} reader The BinaryReader to use.
+ * @return {!proto.haberdasher.Agent}
+ */
+proto.haberdasher.Agent.deserializeBinaryFromReader = function(msg, reader) {
+  while (reader.nextField()) {
+    if (reader.isEndGroup()) {
+      break;
+    }
+    var field = reader.getFieldNumber();
+    switch (field) {
+    case 1:
+      var value = /** @type {string} */ (reader.readString());
+      msg.setName(value);
+      break;
+    case 2:
+      var value = /** @type {string} */ (reader.readString());
+      msg.setVersion(value);
+      break;
+    case 3:
+      var value = /** @type {string} */ (reader.readString());
+      msg.setRevision(value);
+      break;
+    default:
+      reader.skipField();
+      break;
+    }
+  }
+  return msg;
+};
+
+
+/**
+ * Serializes the message to binary data (in protobuf wire format).
+ * @return {!Uint8Array}
+ */
+proto.haberdasher.Agent.prototype.serializeBinary = function() {
+  var writer = new jspb.BinaryWriter();
+  proto.haberdasher.Agent.serializeBinaryToWriter(this, writer);
+  return writer.getResultBuffer();
+};
+
+
+/**
+ * Serializes the given message to binary data (in protobuf wire
+ * format), writing to the given BinaryWriter.
+ * @param {!proto.haberdasher.Agent} message
+ * @param {!jspb.BinaryWriter} writer
+ * @suppress {unusedLocalVariables} f is only used for nested messages
+ */
+proto.haberdasher.Agent.serializeBinaryToWriter = function(message, writer) {
+  var f = undefined;
+  f = message.getName();
+  if (f.length > 0) {
+    writer.writeString(
+      1,
+      f
+    );
+  }
+  f = message.getVersion();
+  if (f.length > 0) {
+    writer.writeString(
+      2,
+      f
+    );
+  }
+  f = message.getRevision();
+  if (f.length > 0) {
+    writer.writeString(
+      3,
+      f
+    );
+  }
+};
+
+
+/**
+ * optional string name = 1;
+ * @return {string}
+ */
+proto.haberdasher.Agent.prototype.getName = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
+};
+
+
+/** @param {string} value */
+proto.haberdasher.Agent.prototype.setName = function(value) {
+  jspb.Message.setProto3StringField(this, 1, value);
+};
+
+
+/**
+ * optional string version = 2;
+ * @return {string}
+ */
+proto.haberdasher.Agent.prototype.getVersion = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 2, ""));
+};
+
+
+/** @param {string} value */
+proto.haberdasher.Agent.prototype.setVersion = function(value) {
+  jspb.Message.setProto3StringField(this, 2, value);
+};
+
+
+/**
+ * optional string revision = 3;
+ * @return {string}
+ */
+proto.haberdasher.Agent.prototype.getRevision = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 3, ""));
+};
+
+
+/** @param {string} value */
+proto.haberdasher.Agent.prototype.setRevision = function(value) {
+  jspb.Message.setProto3StringField(this, 3, value);
+};
+
+
+
+/**
+ * Generated by JsPbCodeGenerator.
+ * @param {Array=} opt_data Optional initial data array, typically from a
+ * server response, or constructed directly in Javascript. The array is used
+ * in place and becomes part of the constructed object. It is not cloned.
+ * If no data is provided, the constructed object will be empty, but still
+ * valid.
+ * @extends {jspb.Message}
+ * @constructor
+ */
+proto.haberdasher.Instance = function(opt_data) {
+  jspb.Message.initialize(this, opt_data, 0, -1, proto.haberdasher.Instance.repeatedFields_, null);
 };
 goog.inherits(proto.haberdasher.Instance, jspb.Message);
 if (goog.DEBUG && !COMPILED) {
   proto.haberdasher.Instance.displayName = 'proto.haberdasher.Instance';
 }
+/**
+ * List of repeated fields within this message type.
+ * @private {!Array<number>}
+ * @const
+ */
+proto.haberdasher.Instance.repeatedFields_ = [1];
+
 
 
 if (jspb.Message.GENERATE_TO_OBJECT) {
@@ -1293,8 +1514,7 @@ proto.haberdasher.Instance.prototype.toObject = function(opt_includeInstance) {
  */
 proto.haberdasher.Instance.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: msg.getId_asB64(),
-    name: jspb.Message.getFieldWithDefault(msg, 2, "")
+    pathList: jspb.Message.getRepeatedField(msg, 1)
   };
 
   if (includeInstance) {
@@ -1332,12 +1552,8 @@ proto.haberdasher.Instance.deserializeBinaryFromReader = function(msg, reader) {
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {!Uint8Array} */ (reader.readBytes());
-      msg.setId(value);
-      break;
-    case 2:
       var value = /** @type {string} */ (reader.readString());
-      msg.setName(value);
+      msg.addPath(value);
       break;
     default:
       reader.skipField();
@@ -1368,74 +1584,42 @@ proto.haberdasher.Instance.prototype.serializeBinary = function() {
  */
 proto.haberdasher.Instance.serializeBinaryToWriter = function(message, writer) {
   var f = undefined;
-  f = message.getId_asU8();
+  f = message.getPathList();
   if (f.length > 0) {
-    writer.writeBytes(
+    writer.writeRepeatedString(
       1,
       f
     );
   }
-  f = message.getName();
-  if (f.length > 0) {
-    writer.writeString(
-      2,
-      f
-    );
-  }
 };
 
 
 /**
- * optional bytes id = 1;
- * @return {!(string|Uint8Array)}
+ * repeated string path = 1;
+ * @return {!Array<string>}
  */
-proto.haberdasher.Instance.prototype.getId = function() {
-  return /** @type {!(string|Uint8Array)} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
+proto.haberdasher.Instance.prototype.getPathList = function() {
+  return /** @type {!Array<string>} */ (jspb.Message.getRepeatedField(this, 1));
+};
+
+
+/** @param {!Array<string>} value */
+proto.haberdasher.Instance.prototype.setPathList = function(value) {
+  jspb.Message.setField(this, 1, value || []);
 };
 
 
 /**
- * optional bytes id = 1;
- * This is a type-conversion wrapper around `getId()`
- * @return {string}
+ * @param {!string} value
+ * @param {number=} opt_index
  */
-proto.haberdasher.Instance.prototype.getId_asB64 = function() {
-  return /** @type {string} */ (jspb.Message.bytesAsB64(
-      this.getId()));
+proto.haberdasher.Instance.prototype.addPath = function(value, opt_index) {
+  jspb.Message.addToRepeatedField(this, 1, value, opt_index);
 };
 
 
-/**
- * optional bytes id = 1;
- * Note that Uint8Array is not supported on all browsers.
- * @see http://caniuse.com/Uint8Array
- * This is a type-conversion wrapper around `getId()`
- * @return {!Uint8Array}
- */
-proto.haberdasher.Instance.prototype.getId_asU8 = function() {
-  return /** @type {!Uint8Array} */ (jspb.Message.bytesAsU8(
-      this.getId()));
-};
-
-
-/** @param {!(string|Uint8Array)} value */
-proto.haberdasher.Instance.prototype.setId = function(value) {
-  jspb.Message.setProto3BytesField(this, 1, value);
-};
-
-
-/**
- * optional string name = 2;
- * @return {string}
- */
-proto.haberdasher.Instance.prototype.getName = function() {
-  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 2, ""));
-};
-
-
-/** @param {string} value */
-proto.haberdasher.Instance.prototype.setName = function(value) {
-  jspb.Message.setProto3StringField(this, 2, value);
+proto.haberdasher.Instance.prototype.clearPathList = function() {
+  this.setPathList([]);
 };
 
 
@@ -1486,7 +1670,7 @@ proto.haberdasher.Individual.prototype.toObject = function(opt_includeInstance) 
  */
 proto.haberdasher.Individual.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: msg.getId_asB64(),
+    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
     name: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
@@ -1525,7 +1709,7 @@ proto.haberdasher.Individual.deserializeBinaryFromReader = function(msg, reader)
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {!Uint8Array} */ (reader.readBytes());
+      var value = /** @type {string} */ (reader.readString());
       msg.setId(value);
       break;
     case 2:
@@ -1561,9 +1745,9 @@ proto.haberdasher.Individual.prototype.serializeBinary = function() {
  */
 proto.haberdasher.Individual.serializeBinaryToWriter = function(message, writer) {
   var f = undefined;
-  f = message.getId_asU8();
+  f = message.getId();
   if (f.length > 0) {
-    writer.writeBytes(
+    writer.writeString(
       1,
       f
     );
@@ -1579,41 +1763,17 @@ proto.haberdasher.Individual.serializeBinaryToWriter = function(message, writer)
 
 
 /**
- * optional bytes id = 1;
- * @return {!(string|Uint8Array)}
- */
-proto.haberdasher.Individual.prototype.getId = function() {
-  return /** @type {!(string|Uint8Array)} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
-};
-
-
-/**
- * optional bytes id = 1;
- * This is a type-conversion wrapper around `getId()`
+ * optional string id = 1;
  * @return {string}
  */
-proto.haberdasher.Individual.prototype.getId_asB64 = function() {
-  return /** @type {string} */ (jspb.Message.bytesAsB64(
-      this.getId()));
+proto.haberdasher.Individual.prototype.getId = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
 };
 
 
-/**
- * optional bytes id = 1;
- * Note that Uint8Array is not supported on all browsers.
- * @see http://caniuse.com/Uint8Array
- * This is a type-conversion wrapper around `getId()`
- * @return {!Uint8Array}
- */
-proto.haberdasher.Individual.prototype.getId_asU8 = function() {
-  return /** @type {!Uint8Array} */ (jspb.Message.bytesAsU8(
-      this.getId()));
-};
-
-
-/** @param {!(string|Uint8Array)} value */
+/** @param {string} value */
 proto.haberdasher.Individual.prototype.setId = function(value) {
-  jspb.Message.setProto3BytesField(this, 1, value);
+  jspb.Message.setProto3StringField(this, 1, value);
 };
 
 
@@ -1679,7 +1839,7 @@ proto.haberdasher.Group.prototype.toObject = function(opt_includeInstance) {
  */
 proto.haberdasher.Group.toObject = function(includeInstance, msg) {
   var f, obj = {
-    id: msg.getId_asB64(),
+    id: jspb.Message.getFieldWithDefault(msg, 1, ""),
     name: jspb.Message.getFieldWithDefault(msg, 2, "")
   };
 
@@ -1718,7 +1878,7 @@ proto.haberdasher.Group.deserializeBinaryFromReader = function(msg, reader) {
     var field = reader.getFieldNumber();
     switch (field) {
     case 1:
-      var value = /** @type {!Uint8Array} */ (reader.readBytes());
+      var value = /** @type {string} */ (reader.readString());
       msg.setId(value);
       break;
     case 2:
@@ -1754,9 +1914,9 @@ proto.haberdasher.Group.prototype.serializeBinary = function() {
  */
 proto.haberdasher.Group.serializeBinaryToWriter = function(message, writer) {
   var f = undefined;
-  f = message.getId_asU8();
+  f = message.getId();
   if (f.length > 0) {
-    writer.writeBytes(
+    writer.writeString(
       1,
       f
     );
@@ -1772,41 +1932,17 @@ proto.haberdasher.Group.serializeBinaryToWriter = function(message, writer) {
 
 
 /**
- * optional bytes id = 1;
- * @return {!(string|Uint8Array)}
- */
-proto.haberdasher.Group.prototype.getId = function() {
-  return /** @type {!(string|Uint8Array)} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
-};
-
-
-/**
- * optional bytes id = 1;
- * This is a type-conversion wrapper around `getId()`
+ * optional string id = 1;
  * @return {string}
  */
-proto.haberdasher.Group.prototype.getId_asB64 = function() {
-  return /** @type {string} */ (jspb.Message.bytesAsB64(
-      this.getId()));
+proto.haberdasher.Group.prototype.getId = function() {
+  return /** @type {string} */ (jspb.Message.getFieldWithDefault(this, 1, ""));
 };
 
 
-/**
- * optional bytes id = 1;
- * Note that Uint8Array is not supported on all browsers.
- * @see http://caniuse.com/Uint8Array
- * This is a type-conversion wrapper around `getId()`
- * @return {!Uint8Array}
- */
-proto.haberdasher.Group.prototype.getId_asU8 = function() {
-  return /** @type {!Uint8Array} */ (jspb.Message.bytesAsU8(
-      this.getId()));
-};
-
-
-/** @param {!(string|Uint8Array)} value */
+/** @param {string} value */
 proto.haberdasher.Group.prototype.setId = function(value) {
-  jspb.Message.setProto3BytesField(this, 1, value);
+  jspb.Message.setProto3StringField(this, 1, value);
 };
 
 

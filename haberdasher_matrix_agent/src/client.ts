@@ -9,6 +9,17 @@ import * as rpc from './haberdasher_grpc_pb'
 
 require('dotenv').config()
 
+const agentDescription = new protos.Agent()
+agentDescription.setName('haberdasher_matrix_agent')
+
+function isStatusObject(o: any): o is grpc.StatusObject {
+    return 'code' in o && 'metadata' in o
+}
+
+function isServiceError(e: Error): e is grpc.ServiceError {
+    return isStatusObject(e)
+}
+
 async function login() {
     const matrixClient = matrix.createClient('https://matrix.org')
     const res = await matrixClient.login('m.login.password', {
@@ -21,39 +32,31 @@ async function login() {
 }
 
 async function main() {
+    const meta = new grpc.Metadata()
+    meta.add('access-token', process.env.HABERDASHER_ACCESS_TOKEN)
+
     const client = new rpc.AgentSubscriberClient(
         '127.0.0.1:42253', grpc.credentials.createInsecure())
 
     const venueStream$: Observable<grpc.ClientWritableStream<protos.Venue>> = Observable.create((observer: Subscriber<grpc.ClientWritableStream<protos.Venue>>) => {
-        observer.next(undefined)
-        const establishment = new protos.EstablishClientRequest()
-        establishment.setName('matrix')
-        establishment.setProtocol('matrix')
-        client.establishClient(establishment, (error, response) => {
-            console.log('establishClient %s/%s', error, response)
-            if (error) {
-                if (!observer.closed) {
-                    observer.error(error)
-                }
-                return
-            }
-            const stream = client.publishVenueUpdates((error, response) => {
-                console.log('stream resolved %s/%s', error, response)
-                if (!observer.closed) {
-                    observer.error(error || new Error('stream cleanly closed for unknown reasons'))
-                }
-            })
-            observer.next(stream)
-            console.log('venue stream established')
+        const stream = client.publishVenueUpdates(meta, (error, response) => {
+            console.log('stream resolved %s/%s', error, response)
+            observer.error(error || new Error('stream cleanly closed for unknown reasons'))
         })
+        observer.next(stream)
+        console.log('venue stream established')
     }).pipe(
         tap(
             (stream) => console.log('new stream %s', stream),
             (error) => console.log('stream error %s', error),
             () => console.log('stream complete')),
-        retryWhen((notifier) => notifier.pipe(catchError((error) => {
+        retryWhen((notifier) => notifier.pipe(map((error) => {
             console.log('venue stream error: %s', error)
-            return empty()
+            if (isServiceError(error) && error.code === grpc.status.PERMISSION_DENIED) {
+                throw error
+            } else {
+                return empty()
+            }
         }))),
     )
 
@@ -87,7 +90,7 @@ async function main() {
                 performer.setMyself(true)
             } else {
                 const individual = new protos.Individual()
-                individual.setId(Buffer.from(sender.userId))
+                individual.setId(sender.userId)
                 individual.setName(sender.name)
                 performer.setIndividual(individual)
             }
@@ -113,7 +116,7 @@ async function main() {
             const dmUserId = roomIdToDmUserId.get(room.roomId)
             if (dmUserId) {
                 const dmIndividual = new protos.Individual()
-                dmIndividual.setId(Buffer.from(dmUserId))
+                dmIndividual.setId(dmUserId)
                 const dmUser = matrixClient.getUser(dmUserId)
                 if (dmUser) {
                     dmIndividual.setName(dmUser.displayName)
@@ -121,7 +124,7 @@ async function main() {
                 venue.setIndividual(dmIndividual)
             } else {
                 const group = new protos.Group()
-                group.setId(Buffer.from(room.roomId))
+                group.setId(room.roomId)
                 group.setName(room.name)
                 venue.setGroup(group)
             }

@@ -23,28 +23,31 @@ export namespace Empty {
     }
 }
 
-export class EstablishClientRequest extends jspb.Message { 
-    getName(): string;
-    setName(value: string): void;
+export class EstablishAgentRequest extends jspb.Message { 
 
-    getProtocol(): string;
-    setProtocol(value: string): void;
+    hasAgent(): boolean;
+    clearAgent(): void;
+    getAgent(): Agent | undefined;
+    setAgent(value?: Agent): void;
+
+    getToken(): string;
+    setToken(value: string): void;
 
 
     serializeBinary(): Uint8Array;
-    toObject(includeInstance?: boolean): EstablishClientRequest.AsObject;
-    static toObject(includeInstance: boolean, msg: EstablishClientRequest): EstablishClientRequest.AsObject;
+    toObject(includeInstance?: boolean): EstablishAgentRequest.AsObject;
+    static toObject(includeInstance: boolean, msg: EstablishAgentRequest): EstablishAgentRequest.AsObject;
     static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
     static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-    static serializeBinaryToWriter(message: EstablishClientRequest, writer: jspb.BinaryWriter): void;
-    static deserializeBinary(bytes: Uint8Array): EstablishClientRequest;
-    static deserializeBinaryFromReader(message: EstablishClientRequest, reader: jspb.BinaryReader): EstablishClientRequest;
+    static serializeBinaryToWriter(message: EstablishAgentRequest, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): EstablishAgentRequest;
+    static deserializeBinaryFromReader(message: EstablishAgentRequest, reader: jspb.BinaryReader): EstablishAgentRequest;
 }
 
-export namespace EstablishClientRequest {
+export namespace EstablishAgentRequest {
     export type AsObject = {
-        name: string,
-        protocol: string,
+        agent?: Agent.AsObject,
+        token: string,
     }
 }
 
@@ -201,14 +204,40 @@ export namespace ListVenuesResponse {
     }
 }
 
-export class Instance extends jspb.Message { 
-    getId(): Uint8Array | string;
-    getId_asU8(): Uint8Array;
-    getId_asB64(): string;
-    setId(value: Uint8Array | string): void;
-
+export class Agent extends jspb.Message { 
     getName(): string;
     setName(value: string): void;
+
+    getVersion(): string;
+    setVersion(value: string): void;
+
+    getRevision(): string;
+    setRevision(value: string): void;
+
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Agent.AsObject;
+    static toObject(includeInstance: boolean, msg: Agent): Agent.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: Agent, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): Agent;
+    static deserializeBinaryFromReader(message: Agent, reader: jspb.BinaryReader): Agent;
+}
+
+export namespace Agent {
+    export type AsObject = {
+        name: string,
+        version: string,
+        revision: string,
+    }
+}
+
+export class Instance extends jspb.Message { 
+    clearPathList(): void;
+    getPathList(): Array<string>;
+    setPathList(value: Array<string>): void;
+    addPath(value: string, index?: number): string;
 
 
     serializeBinary(): Uint8Array;
@@ -223,16 +252,13 @@ export class Instance extends jspb.Message {
 
 export namespace Instance {
     export type AsObject = {
-        id: Uint8Array | string,
-        name: string,
+        pathList: Array<string>,
     }
 }
 
 export class Individual extends jspb.Message { 
-    getId(): Uint8Array | string;
-    getId_asU8(): Uint8Array;
-    getId_asB64(): string;
-    setId(value: Uint8Array | string): void;
+    getId(): string;
+    setId(value: string): void;
 
     getName(): string;
     setName(value: string): void;
@@ -250,16 +276,14 @@ export class Individual extends jspb.Message {
 
 export namespace Individual {
     export type AsObject = {
-        id: Uint8Array | string,
+        id: string,
         name: string,
     }
 }
 
 export class Group extends jspb.Message { 
-    getId(): Uint8Array | string;
-    getId_asU8(): Uint8Array;
-    getId_asB64(): string;
-    setId(value: Uint8Array | string): void;
+    getId(): string;
+    setId(value: string): void;
 
     getName(): string;
     setName(value: string): void;
@@ -277,7 +301,7 @@ export class Group extends jspb.Message {
 
 export namespace Group {
     export type AsObject = {
-        id: Uint8Array | string,
+        id: string,
         name: string,
     }
 }
