@@ -11,8 +11,6 @@ use slog::Logger;
 use std::io;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use tokio_codec;
-use tokio_io;
 
 use Result;
 
@@ -327,12 +325,6 @@ scan_type! {
         let _ = replier.send(Ok(mtproto::TLObject::new(salts)));
         Ok(())
     }
-}
-
-fn one_cpupool() -> ::futures_cpupool::CpuPool {
-    ::futures_cpupool::Builder::new()
-        .pool_size(1)
-        .create()
 }
 
 fn clear_send_error<T>(err: SendError<T>) -> Error {

@@ -5,13 +5,10 @@ use clacks_crypto::{self, csrng_gen};
 use clacks_crypto::symm::AuthKey;
 use clacks_mtproto::{BoxedSerialize, IntoBoxed, mtproto};
 use clacks_transport;
-use failure::Error;
 use futures::{Future, future};
-use futures::prelude::*;
-use futures::prelude::{async, await};
 use futures::sync::oneshot;
 
-use client;
+use {Result, client};
 
 
 fn u32_bytes(n: u32) -> mtproto::bytes {
@@ -32,10 +29,10 @@ impl<E, F> future::Executor<F> for BoxExecutor<E>
     }
 }
 
-pub fn kex<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, expires_in: Option<Duration>)
-             -> impl Future<Item = (AuthKey, mtproto::FutureSalt), Error = Error>
+pub async fn kex<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, expires_in: Option<Duration>)
+             -> Result<(AuthKey, mtproto::FutureSalt)>
     where E: future::Executor<Box<Future<Item = (), Error = ()> + Send>>
-{ async_block! {
+{
     let nonce = csrng_gen();
     let mtproto::ResPQ::ResPQ(pq) = await!(addr.send(client::CallFunction::plain(mtproto::rpc::ReqPq { nonce })))??;
     assert_eq!(nonce, pq.nonce);
@@ -111,11 +108,11 @@ pub fn kex<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, expires_in: Op
     }
     let salt = clacks_transport::session::future_salt_from_negotiated_salt(LittleEndian::read_i64(&new_salt));
     Ok((auth_key, salt))
-}}
+}
 
-pub fn new_auth_key<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, temp_key_duration: Duration) -> impl Future<Item = AuthKey, Error = Error>
+pub async fn new_auth_key<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, temp_key_duration: Duration) -> Result<AuthKey>
     where E: future::Executor<Box<Future<Item = (), Error = ()> + Send>> + Clone
-{ async_block! {
+{
     let (temp_key, salt) = await!(kex(addr.clone(), pq_executor.clone(), Some(temp_key_duration)))?;
     let (perm_key, _) = await!(kex(addr.clone(), pq_executor, None))?;
     await!(addr.send(client::BindAuthKey {
@@ -123,14 +120,14 @@ pub fn new_auth_key<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, temp_
         perm_key: perm_key.clone(),
     }))??;
     Ok(perm_key)
-}}
+}
 
-pub fn adopt_auth_key<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, temp_key_duration: Duration, perm_key: AuthKey) -> impl Future<Item = (), Error = Error>
+pub async fn adopt_auth_key<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, temp_key_duration: Duration, perm_key: AuthKey) -> Result<()>
     where E: future::Executor<Box<Future<Item = (), Error = ()> + Send>> + Clone
-{ async_block! {
+{
     let (temp_key, salt) = await!(kex(addr.clone(), pq_executor.clone(), Some(temp_key_duration)))?;
     await!(addr.send(client::BindAuthKey {
         temp_key, temp_key_duration, salt, perm_key,
     }))??;
     Ok(())
-}}
+}
