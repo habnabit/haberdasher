@@ -23,34 +23,6 @@ export namespace Empty {
     }
 }
 
-export class EstablishAgentRequest extends jspb.Message { 
-
-    hasAgent(): boolean;
-    clearAgent(): void;
-    getAgent(): Agent | undefined;
-    setAgent(value?: Agent): void;
-
-    getToken(): string;
-    setToken(value: string): void;
-
-
-    serializeBinary(): Uint8Array;
-    toObject(includeInstance?: boolean): EstablishAgentRequest.AsObject;
-    static toObject(includeInstance: boolean, msg: EstablishAgentRequest): EstablishAgentRequest.AsObject;
-    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-    static serializeBinaryToWriter(message: EstablishAgentRequest, writer: jspb.BinaryWriter): void;
-    static deserializeBinary(bytes: Uint8Array): EstablishAgentRequest;
-    static deserializeBinaryFromReader(message: EstablishAgentRequest, reader: jspb.BinaryReader): EstablishAgentRequest;
-}
-
-export namespace EstablishAgentRequest {
-    export type AsObject = {
-        agent?: Agent.AsObject,
-        token: string,
-    }
-}
-
 export class AgentRequest extends jspb.Message { 
     getSeqno(): number;
     setSeqno(value: number): void;
@@ -233,29 +205,6 @@ export namespace Agent {
     }
 }
 
-export class Instance extends jspb.Message { 
-    clearPathList(): void;
-    getPathList(): Array<string>;
-    setPathList(value: Array<string>): void;
-    addPath(value: string, index?: number): string;
-
-
-    serializeBinary(): Uint8Array;
-    toObject(includeInstance?: boolean): Instance.AsObject;
-    static toObject(includeInstance: boolean, msg: Instance): Instance.AsObject;
-    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
-    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
-    static serializeBinaryToWriter(message: Instance, writer: jspb.BinaryWriter): void;
-    static deserializeBinary(bytes: Uint8Array): Instance;
-    static deserializeBinaryFromReader(message: Instance, reader: jspb.BinaryReader): Instance;
-}
-
-export namespace Instance {
-    export type AsObject = {
-        pathList: Array<string>,
-    }
-}
-
 export class Individual extends jspb.Message { 
     getId(): string;
     setId(value: string): void;
@@ -358,12 +307,88 @@ export namespace Performer {
 
 }
 
+export class Origin extends jspb.Message { 
+    clearPathList(): void;
+    getPathList(): Array<Origin.Segment>;
+    setPathList(value: Array<Origin.Segment>): void;
+    addPath(value?: Origin.Segment, index?: number): Origin.Segment;
+
+
+    serializeBinary(): Uint8Array;
+    toObject(includeInstance?: boolean): Origin.AsObject;
+    static toObject(includeInstance: boolean, msg: Origin): Origin.AsObject;
+    static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+    static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+    static serializeBinaryToWriter(message: Origin, writer: jspb.BinaryWriter): void;
+    static deserializeBinary(bytes: Uint8Array): Origin;
+    static deserializeBinaryFromReader(message: Origin, reader: jspb.BinaryReader): Origin;
+}
+
+export namespace Origin {
+    export type AsObject = {
+        pathList: Array<Origin.Segment.AsObject>,
+    }
+
+
+    export class Segment extends jspb.Message { 
+
+    hasIndividual(): boolean;
+    clearIndividual(): void;
+    getIndividual(): Individual | undefined;
+    setIndividual(value?: Individual): void;
+
+
+    hasGroup(): boolean;
+    clearGroup(): void;
+    getGroup(): Group | undefined;
+    setGroup(value?: Group): void;
+
+    getService(): boolean;
+    setService(value: boolean): void;
+
+    getServiceInstance(): string;
+    setServiceInstance(value: string): void;
+
+    getMyself(): boolean;
+    setMyself(value: boolean): void;
+
+    getThemself(): boolean;
+    setThemself(value: boolean): void;
+
+    getAgent(): string;
+    setAgent(value: string): void;
+
+
+        serializeBinary(): Uint8Array;
+        toObject(includeInstance?: boolean): Segment.AsObject;
+        static toObject(includeInstance: boolean, msg: Segment): Segment.AsObject;
+        static extensions: {[key: number]: jspb.ExtensionFieldInfo<jspb.Message>};
+        static extensionsBinary: {[key: number]: jspb.ExtensionFieldBinaryInfo<jspb.Message>};
+        static serializeBinaryToWriter(message: Segment, writer: jspb.BinaryWriter): void;
+        static deserializeBinary(bytes: Uint8Array): Segment;
+        static deserializeBinaryFromReader(message: Segment, reader: jspb.BinaryReader): Segment;
+    }
+
+    export namespace Segment {
+        export type AsObject = {
+        individual?: Individual.AsObject,
+        group?: Group.AsObject,
+        service: boolean,
+        serviceInstance: string,
+        myself: boolean,
+        themself: boolean,
+        agent: string,
+        }
+    }
+
+}
+
 export class Message extends jspb.Message { 
 
     hasPerformer(): boolean;
     clearPerformer(): void;
-    getPerformer(): Performer | undefined;
-    setPerformer(value?: Performer): void;
+    getPerformer(): Origin.Segment | undefined;
+    setPerformer(value?: Origin.Segment): void;
 
 
     hasAt(): boolean;
@@ -398,7 +423,7 @@ export class Message extends jspb.Message {
 
 export namespace Message {
     export type AsObject = {
-        performer?: Performer.AsObject,
+        performer?: Origin.Segment.AsObject,
         at?: google_protobuf_timestamp_pb.Timestamp.AsObject,
         text: string,
         pose: string,
@@ -417,28 +442,10 @@ export namespace Message {
 
 export class Venue extends jspb.Message { 
 
-    hasIndividual(): boolean;
-    clearIndividual(): void;
-    getIndividual(): Individual | undefined;
-    setIndividual(value?: Individual): void;
-
-
-    hasGroup(): boolean;
-    clearGroup(): void;
-    getGroup(): Group | undefined;
-    setGroup(value?: Group): void;
-
-
-    hasService(): boolean;
-    clearService(): void;
-    getService(): boolean;
-    setService(value: boolean): void;
-
-
-    hasInstance(): boolean;
-    clearInstance(): void;
-    getInstance(): Instance | undefined;
-    setInstance(value?: Instance): void;
+    hasOrigin(): boolean;
+    clearOrigin(): void;
+    getOrigin(): Origin | undefined;
+    setOrigin(value?: Origin): void;
 
 
     hasLastMessage(): boolean;
@@ -446,8 +453,6 @@ export class Venue extends jspb.Message {
     getLastMessage(): Message | undefined;
     setLastMessage(value?: Message): void;
 
-
-    getKindCase(): Venue.KindCase;
 
     serializeBinary(): Uint8Array;
     toObject(includeInstance?: boolean): Venue.AsObject;
@@ -461,22 +466,7 @@ export class Venue extends jspb.Message {
 
 export namespace Venue {
     export type AsObject = {
-        individual?: Individual.AsObject,
-        group?: Group.AsObject,
-        service: boolean,
-        instance?: Instance.AsObject,
+        origin?: Origin.AsObject,
         lastMessage?: Message.AsObject,
     }
-
-    export enum KindCase {
-        KIND_NOT_SET = 0,
-    
-    INDIVIDUAL = 1,
-
-    GROUP = 2,
-
-    SERVICE = 3,
-
-    }
-
 }

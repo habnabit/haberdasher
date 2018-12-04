@@ -18,13 +18,6 @@
 #![allow(unused_imports)]
 #![allow(unused_results)]
 
-const METHOD_AGENT_SUBSCRIBER_ESTABLISH_AGENT: ::grpcio::Method<super::haberdasher::EstablishAgentRequest, super::haberdasher::Empty> = ::grpcio::Method {
-    ty: ::grpcio::MethodType::Unary,
-    name: "/haberdasher.AgentSubscriber/EstablishAgent",
-    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
-    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
-};
-
 const METHOD_AGENT_SUBSCRIBER_HANDLE_AGENT_REQUESTS: ::grpcio::Method<super::haberdasher::AgentResponse, super::haberdasher::AgentRequest> = ::grpcio::Method {
     ty: ::grpcio::MethodType::Duplex,
     name: "/haberdasher.AgentSubscriber/HandleAgentRequests",
@@ -50,22 +43,6 @@ impl AgentSubscriberClient {
         }
     }
 
-    pub fn establish_agent_opt(&self, req: &super::haberdasher::EstablishAgentRequest, opt: ::grpcio::CallOption) -> ::grpcio::Result<super::haberdasher::Empty> {
-        self.client.unary_call(&METHOD_AGENT_SUBSCRIBER_ESTABLISH_AGENT, req, opt)
-    }
-
-    pub fn establish_agent(&self, req: &super::haberdasher::EstablishAgentRequest) -> ::grpcio::Result<super::haberdasher::Empty> {
-        self.establish_agent_opt(req, ::grpcio::CallOption::default())
-    }
-
-    pub fn establish_agent_async_opt(&self, req: &super::haberdasher::EstablishAgentRequest, opt: ::grpcio::CallOption) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::haberdasher::Empty>> {
-        self.client.unary_call_async(&METHOD_AGENT_SUBSCRIBER_ESTABLISH_AGENT, req, opt)
-    }
-
-    pub fn establish_agent_async(&self, req: &super::haberdasher::EstablishAgentRequest) -> ::grpcio::Result<::grpcio::ClientUnaryReceiver<super::haberdasher::Empty>> {
-        self.establish_agent_async_opt(req, ::grpcio::CallOption::default())
-    }
-
     pub fn handle_agent_requests_opt(&self, opt: ::grpcio::CallOption) -> ::grpcio::Result<(::grpcio::ClientDuplexSender<super::haberdasher::AgentResponse>, ::grpcio::ClientDuplexReceiver<super::haberdasher::AgentRequest>)> {
         self.client.duplex_streaming(&METHOD_AGENT_SUBSCRIBER_HANDLE_AGENT_REQUESTS, opt)
     }
@@ -87,17 +64,12 @@ impl AgentSubscriberClient {
 }
 
 pub trait AgentSubscriber {
-    fn establish_agent(&mut self, ctx: ::grpcio::RpcContext, req: super::haberdasher::EstablishAgentRequest, sink: ::grpcio::UnarySink<super::haberdasher::Empty>);
     fn handle_agent_requests(&mut self, ctx: ::grpcio::RpcContext, stream: ::grpcio::RequestStream<super::haberdasher::AgentResponse>, sink: ::grpcio::DuplexSink<super::haberdasher::AgentRequest>);
     fn publish_venue_updates(&mut self, ctx: ::grpcio::RpcContext, stream: ::grpcio::RequestStream<super::haberdasher::Venue>, sink: ::grpcio::ClientStreamingSink<super::haberdasher::Empty>);
 }
 
 pub fn create_agent_subscriber<S: AgentSubscriber + Send + Clone + 'static>(s: S) -> ::grpcio::Service {
     let mut builder = ::grpcio::ServiceBuilder::new();
-    let mut instance = s.clone();
-    builder = builder.add_unary_handler(&METHOD_AGENT_SUBSCRIBER_ESTABLISH_AGENT, move |ctx, req, resp| {
-        instance.establish_agent(ctx, req, resp)
-    });
     let mut instance = s.clone();
     builder = builder.add_duplex_streaming_handler(&METHOD_AGENT_SUBSCRIBER_HANDLE_AGENT_REQUESTS, move |ctx, req, resp| {
         instance.handle_agent_requests(ctx, req, resp)
