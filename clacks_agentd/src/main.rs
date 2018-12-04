@@ -23,6 +23,7 @@ extern crate rand;
 extern crate keyring;
 extern crate serde;
 extern crate serde_json;
+extern crate sled;
 extern crate slog_async;
 extern crate slog_envlogger;
 extern crate slog_scope;
@@ -61,50 +62,6 @@ impl Handler<clacks_rpc::client::Unhandled> for Delegate {
 impl Actor for Delegate {
     type Context = Context<Self>;
 }
-
-fn kex(log: slog::Logger) -> impl Future<Item = (), Error = failure::Error> { async_block! {
-    let app_key = read_app_key()?;
-    let socket: RealShutdown<tokio::net::TcpStream> = await!(
-        tokio::net::TcpStream::connect(&"149.154.167.50:443".parse().unwrap()))?.into();
-    let delegate = Delegate.start();
-    let app_id = app_key.as_app_id();
-    let client = clacks_rpc::client::RpcClientActor::create(|ctx| {
-        clacks_rpc::client::RpcClientActor::from_context(ctx, log, app_id, socket)
-    });
-    await!(client.send(clacks_rpc::client::SetDelegates {
-        delegates: clacks_rpc::client::EventDelegates {
-            unhandled: Some(delegate.recipient()),
-        },
-    }))?;
-    let perm_key = await!(clacks_rpc::kex::new_auth_key(
-        client.clone(), futures_cpupool::CpuPool::new(1), chrono::Duration::hours(24)))?;
-    println!("perm_key: {:?}", perm_key);
-    let init = mtproto::rpc::InvokeWithLayer {
-        layer: mtproto::LAYER,
-        query: mtproto::rpc::InitConnection {
-            api_id: app_key.api_id,
-            device_model: "test".into(),
-            system_version: "test".into(),
-            app_version: "0.0.1".into(),
-            lang_code: "en".into(),
-            system_lang_code: "en".into(),
-            lang_pack: "".into(),
-            query: mtproto::rpc::help::GetConfig,
-        }
-    };
-    let send_code = mtproto::rpc::auth::SendCode {
-        allow_flashcall: false,
-        phone_number: "".into(),
-        current_number: None,
-        api_id: app_key.api_id,
-        api_hash: app_key.api_hash.clone(),
-    };
-    let answer = await!(client.send(clacks_rpc::client::SendMessage::encrypted(init)))??;
-    println!("answer: {:#?}", answer);
-    println!("---json---\n{}\n---", serde_json::to_string_pretty(&answer).expect("not serialized"));
-    let answer = await!(client.send(clacks_rpc::client::SendMessage::encrypted(send_code)))??;
-    Ok(())
-}}
 
 fn read_app_key() -> Result<secrets::AppKeyV1, failure::Error> {
     let entry = secrets::Entry::new(secrets::AppKey);

@@ -4,6 +4,7 @@ use clacks_mtproto::mtproto;
 use clacks_rpc::client::{self, RpcClientActor, SendMessage};
 use failure::Error;
 use futures::prelude::*;
+use futures::prelude::{async, await};
 use futures::{Future, IntoFuture};
 use slog::Logger;
 use std::collections::BTreeMap;
@@ -75,7 +76,7 @@ impl Handler<Connect> for TelegramManagerActor {
                 let app_id = app_id.clone();
                 move |ctx| RpcClientActor::from_context(ctx, log, app_id, socket)
             });
-            let delegate = Delegate.start();
+            let delegate = Delegate().start();
             await!(client.send(client::SetDelegates {
                 delegates: client::EventDelegates {
                     unhandled: Some(delegate.recipient()),
@@ -142,14 +143,15 @@ impl Handler<SendMessage> for TelegramManagerActor {
     }
 }
 
-struct Delegate;
+struct Delegate(::async_bus::Bus<client::Unhandled>);
 
 impl Handler<client::Unhandled> for Delegate {
     type Result = ();
 
-    fn handle(&mut self, unhandled: client::Unhandled, _: &mut Self::Context) {
+    fn handle(&mut self, unhandled: client::Unhandled, ctx: &mut Self::Context) {
         println!("unhandled {:?}", unhandled.0);
         println!("---json---\n{}\n---", ::serde_json::to_string_pretty(&unhandled.0).expect("not serialized"));
+        self.0.start_send(unhandled);
     }
 }
 

@@ -21,7 +21,7 @@ impl AgentActor {
         where S: tokio_io::AsyncRead + tokio_io::AsyncWrite + 'static,
     {
         let (rx, tx) = stream.split();
-        let rx = ctx.add_stream2(FramedRead::new(rx, LinesCodec::new()));
+        let rx = ctx.add_stream(FramedRead::new(rx, LinesCodec::new()));
         let tx: Box<tokio_io::AsyncWrite> = Box::new(tx);
         let tx = Some(actix::io::FramedWrite::new(tx, LinesCodec::new(), ctx));
         AgentActor {
@@ -38,19 +38,11 @@ impl actix::io::WriteHandler<io::Error> for AgentActor {
 
 }
 
-impl StreamHandler2<String, io::Error> for AgentActor {
-    fn handle(&mut self, input: io::Result<Option<String>>, ctx: &mut Self::Context) {
-        let input = match input {
-            Ok(Some(s)) => Ok(s),
-            Err(e) => Err(e),
-            Ok(None) => return,
-        };
+impl StreamHandler<String, io::Error> for AgentActor {
+    fn handle(&mut self, line: String, ctx: &mut Self::Context) {
         ctx.spawn({
-            input.map_err(|e| -> Error { e.into() })
-                .and_then(|line| {
-                    ::serde_json::from_str(&line)
-                        .map_err(|e| -> Error { e.into() })
-                })
+            ::serde_json::from_str(&line)
+                .map_err(|e| -> Error { e.into() })
                 .map(|request: ::jsonrpc_core::Request| {
                     self.jsonrpc.send(::jsonrpc_handler::HandleRequest { request })
                         .map_err(|e| -> Error { e.into() })
