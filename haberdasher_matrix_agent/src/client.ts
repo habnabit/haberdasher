@@ -84,10 +84,31 @@ async function main() {
         filter(([ev, room, toStartOfTimeline]) => room && !toStartOfTimeline && ev.getType() === 'm.room.message'),
         withLatestFrom(roomIdToDmUserId$),
         map(([[event, room], roomIdToDmUserId]) => {
+            const origin = new protos.Origin()
+            const segment = new protos.Origin.Segment()
+            const dmUserId = roomIdToDmUserId.get(room.roomId)
+            if (dmUserId) {
+                const dmIndividual = new protos.Individual()
+                dmIndividual.setId(dmUserId)
+                const dmUser = matrixClient.getUser(dmUserId)
+                if (dmUser) {
+                    dmIndividual.setName(dmUser.displayName)
+                }
+                segment.setIndividual(dmIndividual)
+            } else {
+                const group = new protos.Group()
+                group.setId(room.roomId)
+                group.setName(room.name)
+                segment.setGroup(group)
+            }
+            origin.setPathList([segment])
+
             var sender = event.sender
-            const performer = new protos.Performer()
+            const performer = new protos.Origin.Segment()
             if (matrixClient.getUserId() === sender.userId) {
                 performer.setMyself(true)
+            } else if (dmUserId) {
+                performer.setThemself(true)
             } else {
                 const individual = new protos.Individual()
                 individual.setId(sender.userId)
@@ -111,23 +132,8 @@ async function main() {
             message.setAt(at)
 
             const venue = new protos.Venue()
+            venue.setOrigin(origin)
             venue.setLastMessage(message)
-
-            const dmUserId = roomIdToDmUserId.get(room.roomId)
-            if (dmUserId) {
-                const dmIndividual = new protos.Individual()
-                dmIndividual.setId(dmUserId)
-                const dmUser = matrixClient.getUser(dmUserId)
-                if (dmUser) {
-                    dmIndividual.setName(dmUser.displayName)
-                }
-                venue.setIndividual(dmIndividual)
-            } else {
-                const group = new protos.Group()
-                group.setId(room.roomId)
-                group.setName(room.name)
-                venue.setGroup(group)
-            }
             return venue
         }),
     )

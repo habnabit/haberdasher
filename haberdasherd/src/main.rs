@@ -65,14 +65,6 @@ impl AgentSubscriberImpl {
 }
 
 impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl {
-    fn establish_agent(
-        &mut self, ctx: grpcio::RpcContext,
-        mut req: protos::EstablishAgentRequest,
-        resp: grpcio::UnarySink<protos::Empty>)
-    {
-
-    }
-
     fn handle_agent_requests(
         &mut self, ctx: grpcio::RpcContext,
         stream: grpcio::RequestStream<protos::AgentResponse>,
@@ -89,11 +81,16 @@ impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl 
         let peer = ctx.peer();
         let res: Box<dyn Future<Item = _, Error = failure::Error> + Send> = if let Some(agent) = self.agent_of_context(&ctx) {
             println!("allowed incoming venue updates from {:?} ({:?})", peer, agent);
-            let agent_name = agent.name.as_ref().map(String::as_str).unwrap_or("<bogus>").to_owned();
+            let segment = {
+                let agent_name = agent.name.as_ref().map(String::as_str).unwrap_or("<bogus>").to_owned();
+                let mut segment = protos::Origin_Segment::new();
+                segment.set_agent(agent_name);
+                segment
+            };
             Box::new({
                 stream
                     .map(move |mut v| {
-                        v.mut_instance().mut_path().push(agent_name.clone());
+                        v.mut_origin().mut_path().insert(0, segment.clone());
                         v
                     })
                     .for_each(|v| {

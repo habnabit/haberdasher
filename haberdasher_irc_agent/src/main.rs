@@ -52,7 +52,7 @@ const ZNC_CAPS: &[Capability] = &[
 
 struct NetworkObserver {
     packed_client: irc::client::PackedIrcClient,
-    instance: protos::Instance,
+    origin: protos::Origin,
     my_nick: String,
     venue_tx: futures::sync::mpsc::Sender<protos::Venue>,
     irc_rx: irc::client::ClientStream,
@@ -71,12 +71,14 @@ impl NetworkObserver {
         let client_fut = IrcClient::new_future(config)?;
         let packed_client = await!(client_fut)?;
         let irc_rx = packed_client.0.stream();
-        let mut instance = protos::Instance::new();
+        let mut origin = protos::Origin::new();
         if let Some(network) = network_opt {
-            instance.mut_path().push(network.to_owned());
+            let mut segment = protos::Origin_Segment::new();
+            segment.set_service_instance(network.to_owned());
+            origin.mut_path().push(segment);
         }
         Ok(NetworkObserver {
-            packed_client, instance, venue_tx, irc_rx,
+            packed_client, origin, venue_tx, irc_rx,
             my_nick: "".to_owned(),
             buffered: None,
         })
@@ -106,18 +108,25 @@ impl NetworkObserver {
         from_individual.set_name(from.to_owned());
         from_individual.set_id(from.to_owned());
         let is_pm = Some(from) == msg.response_target();
-        let mut venue = protos::Venue::new();
+
+        let mut origin = self.origin.clone();
+        let mut context = protos::Origin_Segment::new();
         if is_pm {
-            venue.set_individual(from_individual.clone());
+            context.set_individual(from_individual.clone());
         } else {
-            let group = venue.mut_group();
+            let group = context.mut_group();
             group.set_name(to.to_owned());
             group.set_id(to.to_owned());
         }
+        origin.mut_path().push(context);
+
+        let mut venue = protos::Venue::new();
         {
             let last = venue.mut_last_message();
             if self.is_message_from_myself(msg) {
                 last.mut_performer().set_myself(true);
+            } else if is_pm {
+                last.mut_performer().set_themself(true);
             } else {
                 last.mut_performer().set_individual(from_individual);
             }
@@ -131,7 +140,7 @@ impl NetworkObserver {
             at.set_seconds(at_dt.timestamp());
             at.set_nanos(at_dt.timestamp_subsec_nanos() as i32);
         }
-        venue.set_instance(self.instance.clone());
+        venue.set_origin(origin);
         venue
     }
 
@@ -182,7 +191,7 @@ impl Future for NetworkObserver {
 
     fn poll(&mut self) -> Poll<(), ()> {
         self.poll_loop().map_err(|e| {
-            println!("error observing network {:?}/{:?}: {:?}", self.instance, self.my_nick, e);
+            println!("error observing network {:?}/{:?}: {:?}", self.origin, self.my_nick, e);
         })
     }
 }
