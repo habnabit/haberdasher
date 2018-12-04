@@ -1,5 +1,87 @@
 # CHANGES
 
+## [0.7.7] (2018-11-22)
+
+### Added
+
+- Impl `Into<Recipient<M>>` for `Addr<A>`
+
+## [0.7.6] (2018-11-08)
+
+### Changed
+
+- Use `trust-dns-resolver` 0.10.0.
+
+- Make `System::stop_with_code` public.
+
+
+## [0.7.5] (2018-10-10)
+
+### Added
+
+- Introduce the `clock` module to allow overriding and mocking the system clock
+  based on `tokio_timer`.
+
+- System now has `System::builder()` which allows overriding the system clock
+  with a custom instance. `Arbiter::builder()` can now also override the system
+  clock. The default is to inherit from the system.
+
+- New utility classes `TimerFunc` and `IntervalFunc` in the `utils` module.
+
+- Implement `failure::Fail` for `SendError`.
+
+- Implement `Debug` for multiple public types: `AddressSender`, `Addr`, `Arbiter`, `Context`, `ContextParts`, `ContextFut`, `Response`, `ActorResponse`, `Mailbox`, `SystemRegistry`, `Supervisor`, `System`, `SystemRunner`, `SystemArbiter`. #135
+
+
+### Changed
+
+- No longer perform unnecessary clone of `Addr` in `SystemRegistry::set`.
+
+- Set min trust-dns version
+
+
+### Fixed
+
+- fix infinite loop in ContextFut::poll() caused by late cancel_future() #147
+
+
+## [0.7.4] (2018-08-27)
+
+### Added
+
+* Introduce method `query` to determine whether there is running actor in registry.
+
+* Return back `mocker` module.
+
+
+## [0.7.3] (2018-07-30)
+
+### Fixed
+
+* Parked messages not getting processed #120
+
+
+## [0.7.2] (2018-07-24)
+
+### Changed
+
+* Use actix-derive 0.3
+
+
+## [0.7.1] (2018-07-20)
+
+### Added
+
+* Arbiter now has `Arbiter::builder()` which allows opt-in of behavior to stop
+  the actor system on uncaught panic in any arbiter thread. See #111 for examples.
+
+* Allow to set custom system service actor via `SystemRegistry::set()` method.
+
+### Fixed
+
+* `AsyncContext::run_interval` does not fire callback immediately, instead it fires after specified duration.
+
+
 ## [0.7.0] (2018-07-05)
 
 ### Changed
@@ -45,7 +127,7 @@
 
 * `System` and `Arbiter` refactored
 
-* `Arbiter::handle()` is not available anymore. 
+* `Arbiter::handle()` is not available anymore.
   Use `Arbiter::spawn()` and `Arbiter::spawn_fn()` instead.
 
 * `StreamHandler` trait refactored.

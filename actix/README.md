@@ -58,7 +58,7 @@ the [`Actor`](https://actix.github.io/actix/actix/trait.Actor.html) trait.
 
 ```rust
 extern crate actix;
-use actix::{msgs, Actor, Addr, Arbiter, Context, Syn, System};
+use actix::{msgs, Actor, Addr, Arbiter, Context, System};
 
 struct MyActor;
 
@@ -249,6 +249,6 @@ at your option.
 
 ## Code of Conduct
 
-Contribution to the actix-web crate is organized under the terms of the
+Contribution to the actix crate is organized under the terms of the
 Contributor Covenant, the maintainer of actix, @fafhrd91, promises to
 intervene to uphold that code of conduct.

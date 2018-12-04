@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::atomic::Ordering::{Relaxed, SeqCst};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
+use std::fmt;
 use std::{thread, usize};
 
 use futures::sync::oneshot::{channel as sync_channel, Receiver};
@@ -51,6 +52,15 @@ pub struct AddressSender<A: Actor> {
     maybe_parked: Arc<AtomicBool>,
 }
 
+impl<A: Actor> fmt::Debug for AddressSender<A> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("AddressSender")
+            .field("sender_task", &self.sender_task)
+            .field("maybe_parked", &self.maybe_parked)
+            .finish()
+    }
+}
+
 trait AssertKinds: Send + Sync + Clone {}
 
 /// The receiving end of a channel which implements the `Stream` trait.
@@ -62,6 +72,7 @@ pub struct AddressReceiver<A: Actor> {
     inner: Arc<Inner<A>>,
 }
 
+/// Generate `AddressSenders` for the channel
 pub struct AddressSenderProducer<A: Actor> {
     inner: Arc<Inner<A>>,
 }
@@ -138,11 +149,14 @@ impl SenderTask {
         }
     }
 
-    fn notify(&mut self) {
+    fn notify(&mut self) -> bool {
         self.is_parked = false;
 
         if let Some(task) = self.task.take() {
             task.notify();
+            true
+        } else {
+            false
         }
     }
 }
@@ -194,6 +208,7 @@ pub fn channel<A: Actor>(buffer: usize) -> (AddressSender<A>, AddressReceiver<A>
 //
 //
 impl<A: Actor> AddressSender<A> {
+    /// Is the channel still open
     pub fn connected(&self) -> bool {
         let curr = self.inner.state.load(SeqCst);
         let state = decode_state(curr);
@@ -232,13 +247,11 @@ impl<A: Actor> AddressSender<A> {
         // be parked. This will send the task handle on the parked task queue.
         if park_self {
             self.park(true);
-            Err(SendError::Full(msg))
-        } else {
-            let (tx, rx) = sync_channel();
-            let env = <A::Context as ToEnvelope<A, M>>::pack(msg, Some(tx));
-            self.queue_push_and_signal(env);
-            Ok(rx)
         }
+        let (tx, rx) = sync_channel();
+        let env = <A::Context as ToEnvelope<A, M>>::pack(msg, Some(tx));
+        self.queue_push_and_signal(env);
+        Ok(rx)
     }
 
     /// Attempts to send a message on this `Sender<A>` without blocking.
@@ -259,16 +272,12 @@ impl<A: Actor> AddressSender<A> {
             None => return Err(SendError::Closed(msg)),
         };
 
-        if park_self {
-            if park {
-                self.park(true);
-            }
-            Err(SendError::Full(msg))
-        } else {
-            let env = <A::Context as ToEnvelope<A, M>>::pack(msg, None);
-            self.queue_push_and_signal(env);
-            Ok(())
+        if park_self && park {
+            self.park(true);
         }
+        let env = <A::Context as ToEnvelope<A, M>>::pack(msg, None);
+        self.queue_push_and_signal(env);
+        Ok(())
     }
 
     /// Send a message on this `Sender<A>` without blocking.
@@ -281,7 +290,7 @@ impl<A: Actor> AddressSender<A> {
         M::Result: Send,
         M: Message + Send,
     {
-        if self.inc_num_messages_force().is_none() {
+        if self.inc_num_messages().is_none() {
             Err(SendError::Closed(msg))
         } else {
             let env = <A::Context as ToEnvelope<A, M>>::pack(msg, None);
@@ -309,36 +318,6 @@ impl<A: Actor> AddressSender<A> {
             if !state.is_open {
                 return None;
             }
-
-            // receiver is full
-            let buffer = self.inner.buffer.load(Relaxed);
-            let park_self = buffer != 0 && state.num_messages >= buffer;
-            if park_self {
-                return Some(true);
-            }
-
-            state.num_messages += 1;
-
-            let next = encode_state(&state);
-            match self
-                .inner
-                .state
-                .compare_exchange(curr, next, SeqCst, SeqCst)
-            {
-                Ok(_) => return Some(false),
-                Err(actual) => curr = actual,
-            }
-        }
-    }
-
-    // Increment the number of queued messages. Returns if the sender should block.
-    fn inc_num_messages_force(&self) -> Option<bool> {
-        let mut curr = self.inner.state.load(SeqCst);
-        loop {
-            let mut state = decode_state(curr);
-            if !state.is_open {
-                return None;
-            }
             state.num_messages += 1;
 
             let next = encode_state(&state);
@@ -348,6 +327,7 @@ impl<A: Actor> AddressSender<A> {
                 .compare_exchange(curr, next, SeqCst, SeqCst)
             {
                 Ok(_) => {
+                    // receiver is full
                     let buffer = self.inner.buffer.load(Relaxed);
                     let park_self = buffer != 0 && state.num_messages >= buffer;
                     return Some(park_self);
@@ -401,8 +381,7 @@ impl<A: Actor> AddressSender<A> {
         }
 
         // Send handle over queue
-        let t = Arc::clone(&self.sender_task);
-        self.inner.parked_queue.push(t);
+        self.inner.parked_queue.push(Arc::clone(&self.sender_task));
 
         // Check to make sure we weren't closed after we sent our task on the queue
         let state = decode_state(self.inner.state.load(SeqCst));
@@ -525,6 +504,7 @@ impl<A: Actor> Hash for AddressSender<A> {
 //
 //
 impl<A: Actor> AddressSenderProducer<A> {
+    /// Are any senders connected
     pub fn connected(&self) -> bool {
         self.inner.num_senders.load(SeqCst) != 0
     }
@@ -597,6 +577,7 @@ impl<A: Actor> AddressSenderProducer<A> {
 //
 //
 impl<A: Actor> AddressReceiver<A> {
+    /// Are any senders still connected
     pub fn connected(&self) -> bool {
         self.inner.num_senders.load(SeqCst) != 0
     }
@@ -703,8 +684,9 @@ impl<A: Actor> AddressReceiver<A> {
         loop {
             match unsafe { self.inner.parked_queue.pop() } {
                 PopResult::Data(task) => {
-                    task.lock().notify();
-                    return;
+                    if task.lock().notify() {
+                        return;
+                    }
                 }
                 PopResult::Empty => {
                     // Queue empty, no task to wake up.
@@ -911,12 +893,13 @@ mod tests {
             let arb2 = Arbiter::new("s1");
             arb2.do_send(actix::msgs::Execute::new(move || -> Result<(), ()> {
                 let _ = s2.send(Ping);
+                let _ = s2.send(Ping);
                 Ok(())
             }));
 
             thread::sleep(time::Duration::from_millis(100));
             let state = decode_state(recv.inner.state.load(SeqCst));
-            assert_eq!(state.num_messages, 1);
+            assert_eq!(state.num_messages, 2);
 
             let p = loop {
                 match unsafe { recv.inner.parked_queue.pop() } {
@@ -933,7 +916,7 @@ mod tests {
 
             thread::sleep(time::Duration::from_millis(100));
             let state = decode_state(recv.inner.state.load(SeqCst));
-            assert_eq!(state.num_messages, 1);
+            assert_eq!(state.num_messages, 2);
 
             let p = loop {
                 match unsafe { recv.inner.parked_queue.pop() } {

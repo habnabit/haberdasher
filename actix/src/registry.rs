@@ -29,7 +29,7 @@ type AnyMap = HashMap<TypeId, Box<Any>, BuildHasherDefault<FnvHasher>>;
 /// `ArbiterService` which is unique per arbiter or `SystemService` which is
 /// unique per system.
 ///
-/// If arbiter service is used outside of runnig arbiter, it panics.
+/// If arbiter service is used outside of running arbiter, it panics.
 ///
 /// # Example
 ///
@@ -96,7 +96,7 @@ pub struct Registry {
 /// Trait defines arbiter's service.
 #[allow(unused_variables)]
 pub trait ArbiterService: Actor<Context = Context<Self>> + Supervised + Default {
-    /// Construct and srtart arbiter service
+    /// Construct and start arbiter service
     fn start_service() -> Addr<Self> {
         Supervisor::start(|ctx| {
             let mut act = Self::default();
@@ -139,8 +139,18 @@ impl Registry {
         addr
     }
 
-    /// Add new actor to the registry using the initialization function provided, panic if actor
-    /// is already running
+    /// Check if actor is in registry, if so, return its address
+    pub fn query<A: ArbiterService + Actor<Context = Context<A>>>(&self) -> Option<Addr<A>> {
+        let id = TypeId::of::<A>();
+        if let Some(addr) = self.registry.borrow().get(&id) {
+            if let Some(addr) = addr.downcast_ref::<Addr<A>>() {
+                return Some(addr.clone());
+            }
+        }
+        None
+    }
+
+    /// Add new actor to the registry by address, panic if actor is already running
     pub fn set<A: ArbiterService + Actor<Context = Context<A>>>(&self, addr: Addr<A>) {
         let id = TypeId::of::<A>();
         if let Some(addr) = self.registry.borrow().get(&id) {
@@ -212,6 +222,7 @@ impl Registry {
 ///     });
 /// }
 /// ```
+#[derive(Debug)]
 pub struct SystemRegistry {
     system: Addr<Arbiter>,
     registry: InnerRegistry,
@@ -223,7 +234,7 @@ type InnerRegistry = Arc<ReentrantMutex<RefCell<AnyMapSend>>>;
 /// Trait defines system's service.
 #[allow(unused_variables)]
 pub trait SystemService: Actor<Context = Context<Self>> + Supervised + Default {
-    /// Construct and srtart system service
+    /// Construct and start system service
     fn start_service(sys: &Addr<Arbiter>) -> Addr<Self> {
         Supervisor::start_in_arbiter(sys, |ctx| {
             let mut act = Self::default();
@@ -264,6 +275,32 @@ impl SystemRegistry {
         hm.borrow_mut()
             .insert(TypeId::of::<A>(), Box::new(addr.clone()));
         addr
+    }
+
+    /// Check if actor is in registry, if so, return its address
+    pub fn query<A: SystemService + Actor<Context = Context<A>>>(&self) -> Option<Addr<A>> {
+        let hm = self.registry.lock();
+        if let Some(addr) = hm.borrow().get(&TypeId::of::<A>()) {
+            match addr.downcast_ref::<Addr<A>>() {
+                Some(addr) => return Some(addr.clone()),
+                None => return None,
+            }
+        }
+
+        None
+    }
+
+    /// Add new actor to the registry by address, panic if actor is already running
+    pub fn set<A: SystemService + Actor<Context = Context<A>>>(&self, addr: Addr<A>) {
+        let hm = self.registry.lock();
+        if let Some(addr) = hm.borrow().get(&TypeId::of::<A>()) {
+            if addr.downcast_ref::<Addr<A>>().is_some() {
+                panic!("Actor already started");
+            }
+        }
+
+        hm.borrow_mut()
+            .insert(TypeId::of::<A>(), Box::new(addr));
     }
 }
 

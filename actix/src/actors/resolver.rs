@@ -17,7 +17,8 @@
 //!             let resolver = resolver::Resolver::from_registry();
 //!
 //!             resolver.send(
-//!                 resolver::Resolve::host("localhost"))       // <- resolve "localhost"
+//!                 // resolve "localhost"
+//!                 resolver::Resolve::host("localhost"))
 //!                     .then(|addrs| {
 //!                         println!("RESULT: {:?}", addrs);
 //! #                       System::current().stop();
@@ -29,7 +30,8 @@
 //!             let resolver = resolver::Resolver::from_registry();
 //!
 //!             resolver.send(
-//!                 resolver::Resolve::host("localhost:5000"))  // <- connect to a "localhost"
+//!                 // connect to a "localhost:5000"
+//!                 resolver::Connect::host_and_port("localhost", 5000))
 //!                     .then(|stream| {
 //!                         println!("RESULT: {:?}", stream);
 //!                         Ok::<_, ()>(())
@@ -43,15 +45,17 @@ extern crate trust_dns_resolver;
 use std::collections::VecDeque;
 use std::io;
 use std::net::SocketAddr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use self::trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
-use self::trust_dns_resolver::lookup_ip::LookupIpFuture;
-use self::trust_dns_resolver::ResolverFuture;
+use self::trust_dns_resolver::AsyncResolver;
+use self::trust_dns_resolver::BackgroundLookupIp;
 use futures::{Async, Future, Poll};
 use tokio_tcp::{ConnectFuture, TcpStream};
 use tokio_timer::Delay;
 
+use clock;
+use fut::wrap_future;
 use prelude::*;
 
 #[deprecated(since = "0.7.0", note = "please use `Resolver` instead")]
@@ -62,8 +66,8 @@ pub type ConnectorError = ResolverError;
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct Resolve {
-    name: String,
-    port: Option<u16>,
+    pub name: String,
+    pub port: Option<u16>,
 }
 
 impl Resolve {
@@ -88,9 +92,9 @@ impl Message for Resolve {
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct Connect {
-    name: String,
-    port: Option<u16>,
-    timeout: Duration,
+    pub name: String,
+    pub port: Option<u16>,
+    pub timeout: Duration,
 }
 
 impl Connect {
@@ -150,7 +154,7 @@ pub enum ResolverError {
 }
 
 pub struct Resolver {
-    resolver: Option<ResolverFuture>,
+    resolver: Option<AsyncResolver>,
     cfg: Option<(ResolverConfig, ResolverOpts)>,
     err: Option<String>,
 }
@@ -163,37 +167,47 @@ impl Resolver {
             err: None,
         }
     }
+
+    fn start_resolver<F>(
+        &self, ctx: &mut <Self as Actor>::Context, parts: (AsyncResolver, F),
+    ) -> AsyncResolver
+    where
+        F: 'static + Future<Item = (), Error = ()>,
+    {
+        ctx.spawn(wrap_future::<_, Self>(parts.1));
+        parts.0
+    }
 }
 
 impl Actor for Resolver {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        // AsyncResolver::new() returns the AsyncResolver itself, plus an anonymous
+        // future which gets spawned as a background task for doing DNS
+        // resolution. So we use our litle `start_resolver` wrapper to spawn
+        // the background task (which gets cleaned up automatically if no
+        // outstanding AsyncResolvers stil have a handle to it).
         let resolver = if let Some(cfg) = self.cfg.take() {
-            ResolverFuture::new(cfg.0, cfg.1)
+            self.start_resolver(ctx, AsyncResolver::new(cfg.0, cfg.1))
         } else {
-            match ResolverFuture::from_system_conf() {
-                Ok(resolver) => resolver,
+            match AsyncResolver::from_system_conf() {
+                Ok(resolver) => self.start_resolver(ctx, resolver),
                 Err(err) => {
                     warn!("Can not create system dns resolver: {}", err);
-                    ResolverFuture::new(
-                        ResolverConfig::default(),
-                        ResolverOpts::default(),
+                    self.start_resolver(
+                        ctx,
+                        AsyncResolver::new(
+                            ResolverConfig::default(),
+                            ResolverOpts::default(),
+                        ),
                     )
                 }
             }
         };
 
-        resolver
-            .into_actor(self)
-            .map(|resolver, act, _| {
-                act.resolver = Some(resolver);
-            })
-            .map_err(|err, act, _| {
-                error!("Can not create resolver: {}", err);
-                act.err = Some(format!("Can not create resolver: {}", err));
-            })
-            .wait(ctx);
+        // Keep the resolver itself.
+        self.resolver = Some(resolver);
     }
 }
 
@@ -254,7 +268,7 @@ impl Handler<ConnectAddr> for Resolver {
 
 /// Resolver future
 struct ResolveFut {
-    lookup: Option<LookupIpFuture>,
+    lookup: Option<BackgroundLookupIp>,
     port: u16,
     addrs: Option<VecDeque<SocketAddr>>,
     error: Option<ResolverError>,
@@ -263,7 +277,7 @@ struct ResolveFut {
 
 impl ResolveFut {
     pub fn new<S: AsRef<str>>(
-        addr: S, port: u16, resolver: &ResolverFuture,
+        addr: S, port: u16, resolver: &AsyncResolver,
     ) -> ResolveFut {
         // try to parse as a regular SocketAddr first
         if let Ok(addr) = addr.as_ref().parse() {
@@ -380,7 +394,7 @@ impl TcpConnector {
         TcpConnector {
             addrs,
             stream: None,
-            timeout: Delay::new(Instant::now() + timeout),
+            timeout: Delay::new(clock::now() + timeout),
         }
     }
 }

@@ -76,6 +76,7 @@ mod address;
 mod mailbox;
 
 pub mod actors;
+pub mod clock;
 pub mod fut;
 pub mod io;
 pub mod msgs;
@@ -83,16 +84,13 @@ pub mod registry;
 pub mod sync;
 pub mod utils;
 
-pub use actor::{
-    Actor, ActorContext, ActorState, AsyncContext, Running, SpawnHandle, Supervised,
-};
+pub use actor::{Actor, ActorContext, ActorState, AsyncContext, Running, SpawnHandle, Supervised};
 pub use address::{Addr, MailboxError, Recipient};
 pub use arbiter::Arbiter;
 pub use context::Context;
 pub use fut::{ActorFuture, ActorStream, FinishStream, WrapFuture, WrapStream};
 pub use handler::{
-    ActorResponse, Handler, Message, MessageResult, Response, ResponseActFuture,
-    ResponseFuture,
+    ActorResponse, Handler, Message, MessageResult, Response, ResponseActFuture, ResponseFuture,
 };
 pub use registry::{ArbiterService, Registry, SystemRegistry, SystemService};
 pub use stream::StreamHandler;
@@ -120,15 +118,12 @@ pub mod prelude {
     pub use actor::{
         Actor, ActorContext, ActorState, AsyncContext, Running, SpawnHandle, Supervised,
     };
-    pub use address::{
-        Addr, MailboxError, Recipient, RecipientRequest, Request, SendError,
-    };
+    pub use address::{Addr, MailboxError, Recipient, RecipientRequest, Request, SendError};
     pub use arbiter::Arbiter;
     pub use context::{Context, ContextFutureSpawner};
     pub use fut::{ActorFuture, ActorStream, WrapFuture, WrapStream};
     pub use handler::{
-        ActorResponse, Handler, Message, MessageResult, Response, ResponseActFuture,
-        ResponseFuture,
+        ActorResponse, Handler, Message, MessageResult, Response, ResponseActFuture, ResponseFuture,
     };
     pub use registry::{ArbiterService, SystemService};
     pub use stream::StreamHandler;
@@ -144,7 +139,7 @@ pub mod prelude {
         pub use msgs;
         pub use prelude::*;
         pub use registry::SystemService;
-        pub use utils::Condition;
+        pub use utils::{Condition, IntervalFunc, TimerFunc};
     }
 }
 
@@ -162,7 +157,10 @@ pub mod dev {
     pub use prelude::actix::*;
     pub use prelude::*;
 
-    pub use address::{Envelope, RecipientRequest, Request, ToEnvelope};
+    pub use address::{Envelope, EnvelopeProxy, RecipientRequest, Request, ToEnvelope};
+    pub mod channel {
+        pub use address::channel::{channel, AddressReceiver, AddressSender};
+    }
     pub use contextimpl::{AsyncContextParts, ContextFut, ContextParts};
     pub use handler::{MessageResponse, ResponseChannel};
     pub use mailbox::Mailbox;

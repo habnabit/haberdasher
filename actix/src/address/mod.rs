@@ -1,5 +1,6 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use failure;
 
 pub(crate) mod channel;
 mod envelope;
@@ -55,6 +56,10 @@ impl<T> fmt::Display for SendError<T> {
     }
 }
 
+impl<T> failure::Fail for SendError<T>
+where T: Send + Sync + 'static {
+}
+
 impl fmt::Debug for MailboxError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "MailboxError({})", self)
@@ -62,6 +67,7 @@ impl fmt::Debug for MailboxError {
 }
 
 /// Address of the actor
+#[derive(Debug)]
 pub struct Addr<A: Actor> {
     tx: AddressSender<A>,
 }
@@ -120,9 +126,7 @@ impl<A: Actor> Addr<A> {
     {
         match self.tx.send(msg) {
             Ok(rx) => Request::new(Some(rx), None),
-            Err(SendError::Full(msg)) => {
-                Request::new(None, Some((self.tx.clone(), msg)))
-            }
+            Err(SendError::Full(msg)) => Request::new(None, Some((self.tx.clone(), msg))),
             Err(SendError::Closed(_)) => Request::new(None, None),
         }
     }
@@ -135,7 +139,7 @@ impl<A: Actor> Addr<A> {
         M: Message + Send,
         M::Result: Send,
     {
-        Recipient::new(Box::new(self.tx.clone()))
+        self.into()
     }
 }
 
@@ -205,11 +209,20 @@ where
     pub fn send(&self, msg: M) -> RecipientRequest<M> {
         match self.tx.send(msg) {
             Ok(rx) => RecipientRequest::new(Some(rx), None),
-            Err(SendError::Full(msg)) => {
-                RecipientRequest::new(None, Some((self.tx.boxed(), msg)))
-            }
+            Err(SendError::Full(msg)) => RecipientRequest::new(None, Some((self.tx.boxed(), msg))),
             Err(SendError::Closed(_)) => RecipientRequest::new(None, None),
         }
+    }
+}
+
+impl<A: Actor, M: Message + Send + 'static> Into<Recipient<M>> for Addr<A>
+where
+    A: Handler<M>,
+    M::Result: Send,
+    A::Context: ToEnvelope<A, M>,
+{
+    fn into(self) -> Recipient<M> {
+        Recipient::new(Box::new(self.tx))
     }
 }
 
@@ -278,9 +291,7 @@ mod tests {
     impl actix::Handler<SetCounter> for ActorWithSmallMailBox {
         type Result = <SetCounter as Message>::Result;
 
-        fn handle(
-            &mut self, ping: SetCounter, _: &mut actix::Context<Self>,
-        ) -> Self::Result {
+        fn handle(&mut self, ping: SetCounter, _: &mut actix::Context<Self>) -> Self::Result {
             self.0.store(ping.0, Ordering::Relaxed);
         }
     }
@@ -301,19 +312,22 @@ mod tests {
             //are cloned capacity will be taken into account.
             let send = addr.clone().send(SetCounter(1));
             assert!(send.rx_is_some());
-            let send2 = addr.clone().send(SetCounter(2));
-            assert!(!send2.rx_is_some());
+            let addr2 = addr.clone();
+            let send2 = addr2.send(SetCounter(2));
+            assert!(send2.rx_is_some());
+            let send3 = addr2.send(SetCounter(3));
+            assert!(!send3.rx_is_some());
             let send = send
                 .join(send2)
+                .join(send3)
                 .map(|_| {
                     System::current().stop();
-                })
-                .map_err(|_| {
+                }).map_err(|_| {
                     panic!("Message over limit should be delivered, but it is not!");
                 });
             Arbiter::spawn(send);
         });
 
-        assert_eq!(count.load(Ordering::Relaxed), 2);
+        assert_eq!(count.load(Ordering::Relaxed), 3);
     }
 }
