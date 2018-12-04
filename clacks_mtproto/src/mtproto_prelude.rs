@@ -549,7 +549,7 @@ impl BareDeserialize for Vec<u8> {
         let remainder = have_read % 4;
         if remainder != 0 {
             let mut buf = [0u8; 4];
-            de.read_exact(&mut buf[..4 - remainder])?;
+            de.read_exact(&mut buf[remainder..])?;
         }
         Ok(buf)
     }
@@ -572,7 +572,7 @@ impl BareSerialize for [u8] {
         let remainder = have_written % 4;
         if remainder != 0 {
             let buf = [0u8; 4];
-            ser.write_all(&buf[..4 - remainder])?;
+            ser.write_all(&buf[remainder..])?;
         }
         Ok(())
     }
