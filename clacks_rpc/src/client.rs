@@ -16,7 +16,7 @@ use super::Result;
 
 
 macro_rules! async_handler {
-    (impl ($($generics:tt)*) $input_ty:ty => $actor_ty:ty |$this:ident, $input:ident, $ctx:ident| -> $output_ty:ty $output:block) => {
+    (fn handle ($($generics:tt)*) ($this:ident: $actor_ty:ty, $input:ident: $input_ty:ty, $ctx:ident) -> $output_ty:ty $output:block) => {
         impl <$($generics)*> Handler<$input_ty> for $actor_ty {
             type Result = Box<Future<Item = $output_ty, Error = Error>>;
 
@@ -150,7 +150,7 @@ impl Message for SendMessage {
     type Result = Result<mtproto::TLObject>;
 }
 
-async_handler!(impl() SendMessage => RpcClientActor |this, message, ctx| -> mtproto::TLObject {
+async_handler!(fn handle()(this: RpcClientActor, message: SendMessage, ctx) -> mtproto::TLObject {
     use std::collections::btree_map::Entry::*;
     let tg_tx = this.tg_tx.as_mut().ok_or(RpcError::ConnectionClosed)?;
     let message = message.builder;
@@ -197,7 +197,7 @@ impl<R: 'static> Message for CallFunction<R> {
     type Result = Result<R>;
 }
 
-async_handler!(impl(R: BoxedDeserialize + AnyBoxedSerialize) CallFunction<R> => RpcClientActor |this, message, ctx| -> R {
+async_handler!(fn handle(R: BoxedDeserialize + AnyBoxedSerialize)(this: RpcClientActor, message: CallFunction<R>, ctx) -> R {
     let fut = <RpcClientActor as Handler<SendMessage>>::handle(this, message.inner, ctx);
     Ok(async move {
         let reply: mtproto::TLObject = await!(fut)?;
@@ -222,7 +222,7 @@ impl Message for BindAuthKey {
     type Result = Result<()>;
 }
 
-async_handler!(impl() BindAuthKey => RpcClientActor |this, bind, ctx| -> () {
+async_handler!(fn handle()(this: RpcClientActor, bind: BindAuthKey, ctx) -> () {
     let BindAuthKey { perm_key, temp_key, temp_key_duration, salt } = bind;
     this.session.adopt_key(temp_key);
     this.session.add_server_salts(::std::iter::once(salt));
