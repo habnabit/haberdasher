@@ -12,8 +12,27 @@ use std::io;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
-use Result;
+use super::Result;
 
+
+macro_rules! async_handler {
+    (impl ($($generics:tt)*) $input_ty:ty => $actor_ty:ty |$this:ident, $input:ident, $ctx:ident| -> $output_ty:ty $output:block) => {
+        impl <$($generics)*> Handler<$input_ty> for $actor_ty {
+            type Result = Box<Future<Item = $output_ty, Error = Error>>;
+
+            fn handle(&mut self, $input: $input_ty, $ctx: &mut Self::Context) -> Self::Result {
+                let fut = match (move || {
+                    let $this = self;
+                    $output
+                })() {
+                    Ok(f) => tokio_async_await::compat::backward::Compat::new(f),
+                    Err(e) => return Box::new(future::err(e)),
+                };
+                Box::new(fut)
+            }
+        }
+    };
+}
 
 type Responder = oneshot::Sender<Result<mtproto::TLObject>>;
 
@@ -131,36 +150,21 @@ impl Message for SendMessage {
     type Result = Result<mtproto::TLObject>;
 }
 
-impl Handler<SendMessage> for RpcClientActor {
-    type Result = ResponseFuture<mtproto::TLObject, Error>;
-
-    fn handle(&mut self, message: SendMessage, ctx: &mut Self::Context) -> Self::Result {
-        use std::collections::btree_map::Entry::*;
-        let tg_tx = match self.tg_tx {
-            Some(ref mut c) => c,
-            None => {
-                return Box::new(future::err(RpcError::ConnectionClosed.into()));
-            },
-        };
-        let message = message.builder;
-        let (tx, rx) = oneshot::channel();
-        match self.pending_rpcs.entry(message.message_id()) {
-            Vacant(e) => {
-                e.insert((message.constructor(), tx));
-            },
-            Occupied(_) => {
-                return Box::new(future::err(RpcError::DuplicateMessageId.into()));
-            },
-        }
-        Box::new({
-            self.session.serialize_message(message)
-                .map(|v| tg_tx.write(v))
-                .into_future()
-                .and_then(move |()| rx.map_err(Into::into))
-                .and_then(|r| r)
-        })
+async_handler!(impl() SendMessage => RpcClientActor |this, message, ctx| -> mtproto::TLObject {
+    use std::collections::btree_map::Entry::*;
+    let tg_tx = this.tg_tx.as_mut().ok_or(RpcError::ConnectionClosed)?;
+    let message = message.builder;
+    let (tx, rx) = oneshot::channel();
+    match this.pending_rpcs.entry(message.message_id()) {
+        Vacant(e) => {
+            e.insert((message.constructor(), tx));
+        },
+        Occupied(_) => bail!(RpcError::DuplicateMessageId),
     }
-}
+    let serialized = this.session.serialize_message(message)?;
+    tg_tx.write(serialized);
+    Ok(async { Ok(await!(rx)??) })
+});
 
 pub struct CallFunction<R> {
     inner: SendMessage,
@@ -193,24 +197,19 @@ impl<R: 'static> Message for CallFunction<R> {
     type Result = Result<R>;
 }
 
-impl<R> Handler<CallFunction<R>> for RpcClientActor
-    where R: BoxedDeserialize + AnyBoxedSerialize,
-{
-    type Result = ResponseFuture<R, Error>;
-
-    fn handle(&mut self, message: CallFunction<R>, ctx: &mut Self::Context) -> Self::Result {
-        Box::new({
-            <RpcClientActor as Handler<SendMessage>>::handle(self, message.inner, ctx)
-                .and_then(|o| match o.downcast::<R>() {
-                    Ok(r) => Ok(r),
-                    Err(e) => {
-                        println!("got: {:?}", e);
-                        Err(RpcError::BadReplyType.into())
-                    },
-                })
-        })
-    }
-}
+async_handler!(impl(R: BoxedDeserialize + AnyBoxedSerialize) CallFunction<R> => RpcClientActor |this, message, ctx| -> R {
+    let fut = <RpcClientActor as Handler<SendMessage>>::handle(this, message.inner, ctx);
+    Ok(async move {
+        let reply: mtproto::TLObject = await!(fut)?;
+        match reply.downcast::<R>() {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                println!("got: {:?}", e);
+                Err(RpcError::BadReplyType.into())
+            },
+        }
+    })
+});
 
 pub(crate) struct BindAuthKey {
     pub perm_key: AuthKey,
@@ -223,31 +222,22 @@ impl Message for BindAuthKey {
     type Result = Result<()>;
 }
 
-impl Handler<BindAuthKey> for RpcClientActor {
-    type Result = ResponseFuture<(), Error>;
-
-    fn handle(&mut self, bind: BindAuthKey, ctx: &mut Self::Context) -> Self::Result {
-        let BindAuthKey { perm_key, temp_key, temp_key_duration, salt } = bind;
-        self.session.adopt_key(temp_key);
-        self.session.add_server_salts(::std::iter::once(salt));
-        let addr = ctx.address();
-        let bound = self.session.bind_auth_key(perm_key, temp_key_duration)
-            .map(|message| addr.send(CallFunction::<mtproto::Bool> {
-                inner: SendMessage { builder: message.lift() },
-                _dummy: PhantomData,
-            }));
-        Box::new({
-            bound.into_future()
-                .and_then(|f| f.map_err(Into::into))
-                .and_then(|r| r)
-                .and_then(|reply| if reply.into() {
-                    Ok(())
-                } else {
-                    Err(format_err!("confusing Ok(false) from bind_auth_key").into())
-                })
-        })
-    }
-}
+async_handler!(impl() BindAuthKey => RpcClientActor |this, bind, ctx| -> () {
+    let BindAuthKey { perm_key, temp_key, temp_key_duration, salt } = bind;
+    this.session.adopt_key(temp_key);
+    this.session.add_server_salts(::std::iter::once(salt));
+    let addr = ctx.address();
+    let message = this.session.bind_auth_key(perm_key, temp_key_duration)?;
+    let reply_fut = addr.send(CallFunction::<mtproto::Bool> {
+        inner: SendMessage { builder: message.lift() },
+        _dummy: PhantomData,
+    });
+    Ok(async {
+        let bound: bool = await!(reply_fut)??.into();
+        ensure!(bound, format_err!("confusing Ok(false) from bind_auth_key"));
+        Ok(())
+    })
+});
 
 struct Scan<'a, S>(&'a mut RpcClientActor, &'a mut Context<RpcClientActor>, S);
 

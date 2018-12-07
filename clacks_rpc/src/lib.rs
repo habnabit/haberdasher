@@ -5,12 +5,6 @@
 #[macro_use] extern crate futures;
 #[macro_use] extern crate slog;
 #[macro_use] extern crate tokio;
-extern crate actix;
-extern crate byteorder;
-extern crate chrono;
-extern crate clacks_crypto;
-extern crate clacks_mtproto;
-extern crate clacks_transport;
 
 pub mod client;
 pub mod kex;

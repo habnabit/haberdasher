@@ -1,4 +1,4 @@
-use actix::prelude::*;
+use ::actix::prelude::*;
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use chrono::Duration;
 use clacks_crypto::{self, csrng_gen};
@@ -8,7 +8,7 @@ use clacks_transport;
 use futures::{Future, future};
 use futures::sync::oneshot;
 
-use {Result, client};
+use super::{Result, client};
 
 
 fn u32_bytes(n: u32) -> mtproto::bytes {
