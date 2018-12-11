@@ -175,7 +175,7 @@ impl<R> CallFunction<R>
     where R: BoxedDeserialize + AnyBoxedSerialize,
 {
     pub fn encrypted<M>(query: M) -> Self
-        where M: ::clacks_mtproto::Function<Reply = R>,
+        where M: clacks_mtproto::Function<Reply = R>,
     {
         CallFunction {
             inner: SendMessage::encrypted(query),
@@ -184,7 +184,7 @@ impl<R> CallFunction<R>
     }
 
     pub fn plain<M>(query: M) -> Self
-        where M: ::clacks_mtproto::Function<Reply = R>,
+        where M: clacks_mtproto::Function<Reply = R>,
     {
         CallFunction {
             inner: SendMessage::plain(query),
@@ -225,7 +225,7 @@ impl Message for BindAuthKey {
 async_handler!(fn handle()(this: RpcClientActor, bind: BindAuthKey, ctx) -> () {
     let BindAuthKey { perm_key, temp_key, temp_key_duration, salt } = bind;
     this.session.adopt_key(temp_key);
-    this.session.add_server_salts(::std::iter::once(salt));
+    this.session.add_server_salts(std::iter::once(salt));
     let addr = ctx.address();
     let message = this.session.bind_auth_key(perm_key, temp_key_duration)?;
     let reply_fut = addr.send(CallFunction::<mtproto::Bool> {

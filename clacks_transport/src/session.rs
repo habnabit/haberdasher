@@ -1,15 +1,14 @@
 use chrono::{DateTime, Duration, Utc, Timelike, TimeZone};
-use clacks_crypto::CSRNG;
+use clacks_crypto::csrng_gen;
 use clacks_crypto::symm::AuthKey;
 use clacks_mtproto::{AnyBoxedSerialize, BareSerialize, BoxedSerialize, ConstructorNumber, IntoBoxed, mtproto};
 use clacks_mtproto::mtproto::wire::outbound_encrypted::OutboundEncrypted;
 use clacks_mtproto::mtproto::wire::outbound_raw::OutboundRaw;
 use byteorder::{LittleEndian, ByteOrder, ReadBytesExt};
 use either::Either;
-use rand::Rng;
 use std::{cmp, io, mem};
 
-use Result;
+use super::Result;
 
 
 #[derive(Debug, Fail)]
@@ -219,7 +218,7 @@ impl Session {
     pub fn new(app_id: AppId) -> Session {
         Session {
             app_id,
-            session_id: CSRNG.gen(),
+            session_id: csrng_gen(),
             temp_session_id: None,
             server_salts: vec![],
             seq_no: 0,
@@ -332,9 +331,8 @@ impl Session {
     pub fn process_message(&self, message: &[u8]) -> Result<InboundMessage> {
         if message.len() == 4 {
             Err(ErrorCode(LittleEndian::read_i32(&message)))?
-        } else if message.len() < 8 {
-            Err(format_err!("strange message length: {:?}", message))?
         }
+        ensure!(message.len() >= 8, "strange message length: {:?}", message);
 
         let mut cursor = io::Cursor::new(message);
         let auth_key_id = cursor.read_i64::<LittleEndian>()?;
@@ -347,9 +345,7 @@ impl Session {
         let len = cursor.read_i32::<LittleEndian>()? as usize;
         let pos = cursor.position() as usize;
         cursor.into_inner();
-        if message.len() < pos + len {
-            Err(::clacks_crypto::symm::AuthenticationFailure::BadLength)?
-        }
+        ensure!(message.len() >= pos + len, clacks_crypto::symm::AuthenticationFailure::BadLength);
         let payload = &message[pos..pos+len];
         Ok(InboundMessage {
             message_id: message_id,
