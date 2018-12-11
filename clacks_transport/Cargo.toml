@@ -1,0 +1,25 @@
+[package]
+name = "clacks_transport"
+version = "0.0.5"
+authors = ["Aaron Gallagher <_@habnab.it>", "Connie Hilarides <connorcpu@live.com>"]
+license = "MIT/Apache-2.0"
+description = "telegram's TCP transport encoding"
+edition = "2018"
+
+[dependencies]
+byteorder = "1.2.3"
+bytes = "0.4.8"
+chrono = "0.4.3"
+either = "1.5.0"
+failure = "0.1.1"
+rand = "0.4.2"
+slog = "2.2.3"
+tokio-codec = "0.1.0"
+
+[dependencies.clacks_mtproto]
+path = "../clacks_mtproto"
+version = "0.73.0"
+
+[dependencies.clacks_crypto]
+path = "../clacks_crypto"
+version = "0.0.5"

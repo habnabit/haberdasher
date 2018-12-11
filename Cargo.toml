@@ -1,5 +1,10 @@
 [workspace]
 members = [
+    "clacks_crypto",
+    "clacks_mtproto",
+    "clacks_rpc",
+    "clacks_tl_codegen",
+    "clacks_transport",
     "haberdasher_rpc",
     "haberdasherd",
     "haberdasher_irc_agent",

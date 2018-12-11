@@ -1,0 +1,17 @@
+[package]
+name = "clacks_crypto"
+version = "0.0.5"
+authors = ["Aaron Gallagher <_@habnab.it>", "Connie Hilarides <connorcpu@live.com>"]
+license = "MIT/Apache-2.0"
+description = "crypto-related functionality for telegram/mtproto"
+
+[dependencies]
+byteorder = "1.2.3"
+chrono = "0.4.3"
+failure = "0.1.1"
+openssl = "0.10.10"
+rand = "0.4.2"
+
+[dependencies.clacks_mtproto]
+path = "../clacks_mtproto"
+version = "0.73.0"
