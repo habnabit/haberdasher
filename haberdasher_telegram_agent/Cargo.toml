@@ -1,40 +1,40 @@
 [package]
-name = "clacks_agentd"
+name = "haberdasher_telegram_agent"
 version = "0.0.1"
 authors = ["Aaron Gallagher <_@habnab.it>"]
+edition = "2018"
 
 [dependencies]
+actix = "0.7.9"
 byteorder = "1.2.3"
 bytes = "0.4.8"
 chrono = "0.4.3"
+clap = "2.32.0"
 delegate = "0.1.3"
-failure = "0.1.1"
-futures = "0.1.21"
-futures-await = "0.1.0"
+failure = "0.1.3"
+futures = "0.1.25"
 futures-cpupool = "0.1.8"
 lazy_static = "1.0.1"
 rand = "0.4.2"
 serde = "1.0.66"
 serde_derive = "1.0.66"
 serde_json = "1.0.21"
-sled = "0.15.17"
+sled = "0.16.7"
 slog = "2.2.3"
 slog-async = "2.3.0"
 slog-envlogger = "2.1.0"
 slog-scope = "4.0.1"
 slog-term = "2.4.0"
-tokio = "0.1.7"
+structopt = "0.2.14"
+tokio-async-await = "0.1.4"
 tokio-codec = "0.1.0"
 tokio-io = "0.1.7"
 tokio-uds = "0.2.0"
+toml = "0.4.10"
 
-[dependencies.actix]
-path = "../actix"
-version = "0.7.7"
-
-[dependencies.async_bus]
-path = "../async_bus"
-version = "2.0.0"
+[dependencies.tokio]
+version = "0.1.13"
+features = ["async-await-preview"]
 
 [dependencies.clacks_mtproto]
 path = "../clacks_mtproto"
@@ -47,23 +47,8 @@ version = "0.0.5"
 [dependencies.clacks_transport]
 path = "../clacks_transport"
 version = "0.0.5"
+features = ["protocol-tracing"]
 
 [dependencies.clacks_rpc]
 path = "../clacks_rpc"
 version = "0.0.5"
-
-[dependencies.jsonrpc-core]
-path = "../jsonrpc/core"
-version = "*"
-
-[dependencies.jsonrpc-macros]
-path = "../jsonrpc/macros"
-version = "*"
-
-[dependencies.jsonrpc-pubsub]
-path = "../jsonrpc/pubsub"
-version = "*"
-
-[dependencies.keyring]
-path = "../keyring-rs"
-version = "0.4.0"
