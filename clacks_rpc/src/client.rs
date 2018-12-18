@@ -9,12 +9,13 @@ use futures::{self, Future, IntoFuture, Sink, Stream, future, stream};
 use futures::sync::oneshot;
 use slog::Logger;
 use std::io;
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
 use super::Result;
 
-
+#[macro_export]
 macro_rules! async_handler {
     (fn handle ($($generics:tt)*) ($this:ident: $actor_ty:ty, $input:ident: $input_ty:ty, $ctx:ident) -> $output_ty:ty $output:block) => {
         impl <$($generics)*> Handler<$input_ty> for $actor_ty {
@@ -37,6 +38,7 @@ macro_rules! async_handler {
 type Responder = oneshot::Sender<Result<mtproto::TLObject>>;
 
 pub struct RpcClientActor {
+    log: Logger,
     session: Session,
     tg_tx: Option<actix::io::FramedWrite<Box<tokio_io::AsyncWrite>, TelegramCodec>>,
     tg_rx: actix::SpawnHandle,
@@ -52,21 +54,23 @@ pub enum RpcError {
     DuplicateMessageId,
     #[fail(display = "")]
     BadReplyType,
-    #[fail(display = "rpc error")]
-    UpstreamRpcError(mtproto::RpcError),
 }
+
+#[derive(Debug, Fail)]
+#[fail(display = "rpc error")]
+pub struct UpstreamRpcError(mtproto::RpcError);
 
 impl RpcClientActor {
     pub fn from_context<S>(ctx: &mut Context<Self>, log: Logger, app_id: AppId, stream: S) -> Self
         where S: tokio_io::AsyncRead + tokio_io::AsyncWrite + 'static,
     {
-        let session = Session::new(app_id);
+        let session = Session::new(log.new(o!("subsystem" => "session")), app_id);
         let (tg_rx, tg_tx) = stream.split();
         let tg_rx = ctx.add_stream(tokio_codec::FramedRead::new(tg_rx, TelegramCodec::new()));
         let tg_tx: Box<tokio_io::AsyncWrite> = Box::new(tg_tx);
         let tg_tx = actix::io::FramedWrite::new(tg_tx, TelegramCodec::new(), ctx);
         RpcClientActor {
-            session, tg_rx,
+            log, session, tg_rx,
             tg_tx: Some(tg_tx),
             delegates: Default::default(),
             pending_rpcs: BTreeMap::new(),
@@ -104,10 +108,9 @@ impl StreamHandler<Vec<u8>, io::Error> for RpcClientActor {
             Ok(m) => m,
             Err(e) => return,
         };
-        let payload = mtproto::TLObject::boxed_deserialized_from_bytes(&message.payload);
         if message.was_encrypted {
             self.maybe_ack(message.seq_no, message.message_id);
-            match payload.and_then(|o| self.scan_replies(ctx, o)) {
+            match self.scan_replies(ctx, message.payload) {
                 Ok(()) => (),
                 Err(e) => {
 
@@ -118,7 +121,8 @@ impl StreamHandler<Vec<u8>, io::Error> for RpcClientActor {
         } else {
             let key = *self.pending_rpcs.keys().next().unwrap();
             let (_, sender) = self.pending_rpcs.remove(&key).unwrap();
-            let _ = sender.send(payload);
+            // XXX: figure out how to plumb through RPC errors
+            let _ = sender.send(Ok(message.payload));
         }
     }
 
@@ -198,13 +202,14 @@ impl<R: 'static> Message for CallFunction<R> {
 }
 
 async_handler!(fn handle(R: BoxedDeserialize + AnyBoxedSerialize)(this: RpcClientActor, message: CallFunction<R>, ctx) -> R {
+    let log = this.log.clone();
     let fut = <RpcClientActor as Handler<SendMessage>>::handle(this, message.inner, ctx);
     Ok(async move {
         let reply: mtproto::TLObject = await!(fut)?;
         match reply.downcast::<R>() {
             Ok(r) => Ok(r),
             Err(e) => {
-                println!("got: {:?}", e);
+                error!(log, "got: {:?}", e);
                 Err(RpcError::BadReplyType.into())
             },
         }
@@ -297,7 +302,7 @@ scan_type! {
         let mtproto::manual::RpcResult::RpcResult(rpc) = rpc;
         let (_, replier) = this.get_replier(rpc.req_msg_id)?;
         let result = match rpc.result.downcast::<mtproto::RpcError>() {
-            Ok(err) => Err(RpcError::UpstreamRpcError(err).into()),
+            Ok(err) => Err(UpstreamRpcError(err).into()),
             Err(obj) => Ok(obj),
         };
         let _ = replier.send(result);
@@ -324,14 +329,73 @@ fn clear_send_error<T>(err: SendError<T>) -> Error {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct InitConnection {
+    pub device_model: Option<Cow<'static, str>>,
+    pub system_version: Option<Cow<'static, str>>,
+    pub app_version: Option<Cow<'static, str>>,
+    pub lang_code: Option<Cow<'static, str>>,
+    pub system_lang_code: Option<Cow<'static, str>>,
+    pub lang_pack: Option<Cow<'static, str>>,
+}
+
+impl Message for InitConnection {
+    type Result = Result<mtproto::Config>;
+}
+
+fn unwrap_cow_option(cow_opt: &Option<Cow<'static, str>>, default: &str) -> String {
+    cow_opt.as_ref()
+        .map(|c| c.as_ref())
+        .unwrap_or(default)
+        .to_owned()
+}
+
+async_handler!(fn handle()(this: RpcClientActor, req: InitConnection, ctx) -> mtproto::Config {
+    let call = mtproto::rpc::InvokeWithLayer {
+        layer: mtproto::LAYER,
+        query: mtproto::rpc::InitConnection {
+            api_id: this.session.app_id().api_id,
+            device_model: unwrap_cow_option(&req.device_model, "test"),
+            system_version: unwrap_cow_option(&req.system_version, "test"),
+            app_version: unwrap_cow_option(&req.app_version, "test"),
+            lang_code: unwrap_cow_option(&req.lang_code, "en"),
+            system_lang_code: unwrap_cow_option(&req.system_lang_code, "en"),
+            lang_pack: unwrap_cow_option(&req.lang_pack, ""),
+            query: mtproto::rpc::help::GetConfig,
+        },
+    };
+    let addr = ctx.address();
+    Ok(async move {
+        let res = await!(addr.send(CallFunction::encrypted(call)))??;
+        Ok(res)
+    })
+});
+
+#[derive(Debug, Clone)]
 pub struct Unhandled(pub mtproto::TLObject);
 impl Message for Unhandled {
     type Result = ();
 }
 
+#[derive(Debug, Clone)]
+pub struct ReadAuthCode {
+    pub phone_number: String,
+    pub type_: mtproto::auth::SentCodeType,
+}
+#[derive(Debug, Clone)]
+pub enum AuthCodeReply {
+    Code(String),
+    Resend,
+    Cancel,
+}
+impl Message for ReadAuthCode {
+    type Result = Result<AuthCodeReply>;
+}
+
 #[derive(Default)]
 pub struct EventDelegates {
     pub unhandled: Option<Recipient<Unhandled>>,
+    pub read_auth_code: Option<Recipient<ReadAuthCode>>,
 }
 
 pub struct SetDelegates {
@@ -349,3 +413,104 @@ impl Handler<SetDelegates> for RpcClientActor {
         self.delegates = delegates.delegates;
     }
 }
+
+#[derive(Debug, Clone)]
+struct SendToDelegate<T>(T);
+
+impl Message for SendToDelegate<ReadAuthCode> {
+    type Result = Result<AuthCodeReply>;
+}
+
+impl Handler<SendToDelegate<ReadAuthCode>> for RpcClientActor {
+    type Result = ResponseActFuture<Self, AuthCodeReply, failure::Error>;
+
+    fn handle(&mut self, to_send: SendToDelegate<ReadAuthCode>, ctx: &mut Self::Context) -> Self::Result {
+        match &self.delegates.read_auth_code {
+            Some(addr) => Box::new({
+                actix::fut::wrap_future(addr.send(to_send.0))
+                    .then(|rr, _, _| actix::fut::wrap_future(rr.unwrap_or_else(|e| Err(e)?).into_future()))
+            }),
+            None => Box::new({
+                actix::fut::wrap_future(Err(format_err!("no delegate")).into_future())
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SendAuthCode {
+    pub phone_number: String,
+}
+
+impl Message for SendAuthCode {
+    type Result = Result<()>;
+}
+
+#[derive(Debug, Fail)]
+pub enum AuthError {
+    #[fail(display = "")]
+    Canceled(bool),
+}
+
+#[derive(Debug, Fail)]
+#[fail(display = "")]
+pub struct AuthRedirectTo(pub u32);
+
+async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> () {
+    let SendAuthCode { phone_number } = req;
+    let log = this.log.clone();
+    let app_id = this.session.app_id();
+    let send_code = mtproto::rpc::auth::SendCode {
+        allow_flashcall: false,
+        api_hash: app_id.api_hash.clone(),
+        api_id: app_id.api_id,
+        current_number: None,
+        phone_number: phone_number.clone(),
+    };
+    let addr = ctx.address();
+    Ok(async move {
+        let mut sent = match await!(addr.send(CallFunction::encrypted(send_code)))? {
+            Ok(mtproto::auth::SentCode::SentCode(sent)) => sent,
+            Err(e) => {
+                let e = e.downcast::<UpstreamRpcError>()?;
+                let mtproto::RpcError::RpcError(ref e_inner) = &e.0;
+                let dc_opt = if e_inner.error_code == 303 { Some(e_inner.error_message.as_str()) } else { None }
+                    .and_then(|s| s.chars().next_back())
+                    .and_then(|c| c.to_digit(10));
+                match dc_opt {
+                    Some(dc)  => Err(AuthRedirectTo(dc))?,
+                    _ => Err(e)?,
+                }
+            },
+        };
+        loop {
+            use self::AuthCodeReply::*;
+            match await!(addr.send(SendToDelegate(ReadAuthCode {
+                phone_number: phone_number.clone(),
+                type_: sent.type_.clone(),
+            })))?? {
+                Code(phone_code) => {
+                    let auth = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::SignIn {
+                        phone_code,
+                        phone_number: phone_number.clone(),
+                        phone_code_hash: sent.phone_code_hash.clone(),
+                    })))??;
+                }
+                Resend => {
+                    let mtproto::auth::SentCode::SentCode(reply) = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
+                        phone_number: phone_number.clone(),
+                        phone_code_hash: sent.phone_code_hash.clone(),
+                    })))??;
+                    sent = reply;
+                }
+                Cancel => {
+                    let canceled = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::CancelCode {
+                        phone_number: phone_number.clone(),
+                        phone_code_hash: sent.phone_code_hash.clone(),
+                    })))??;
+                    Err(AuthError::Canceled(canceled.into()))?;
+                }
+            }
+        }
+    })
+});

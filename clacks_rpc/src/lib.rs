@@ -9,4 +9,4 @@
 pub mod client;
 pub mod kex;
 
-pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
+pub type Result<T> = std::result::Result<T, failure::Error>;

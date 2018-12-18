@@ -1,11 +1,13 @@
 use chrono::{DateTime, Duration, Utc, Timelike, TimeZone};
 use clacks_crypto::csrng_gen;
 use clacks_crypto::symm::AuthKey;
-use clacks_mtproto::{AnyBoxedSerialize, BareSerialize, BoxedSerialize, ConstructorNumber, IntoBoxed, mtproto};
+use clacks_mtproto::{AnyBoxedSerialize, BareSerialize, BoxedDeserialize, BoxedSerialize, ConstructorNumber, IntoBoxed, mtproto};
 use clacks_mtproto::mtproto::wire::outbound_encrypted::OutboundEncrypted;
 use clacks_mtproto::mtproto::wire::outbound_raw::OutboundRaw;
 use byteorder::{LittleEndian, ByteOrder, ReadBytesExt};
 use either::Either;
+use serde_derive::Serialize;
+use slog::Logger;
 use std::{cmp, io, mem};
 
 use super::Result;
@@ -59,6 +61,7 @@ impl From<mtproto::FutureSalt> for Salt {
 
 #[derive(Debug, Clone)]
 pub struct Session {
+    log: Logger,
     session_id: i64,
     temp_session_id: Option<i64>,
     server_salts: Vec<Salt>,
@@ -68,16 +71,17 @@ pub struct Session {
     app_id: AppId,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct PlainPayload {
     dummy: (),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct EncryptedPayload {
     session_id: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
 pub struct MessageBuilder<P> {
     message_id: i64,
     payload: mtproto::TLObject,
@@ -206,18 +210,18 @@ fn is_content_message(n: ConstructorNumber) -> bool {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct InboundMessage {
     pub message_id: i64,
-    pub payload: Vec<u8>,
+    pub payload: mtproto::TLObject,
     pub was_encrypted: bool,
     pub seq_no: Option<i32>,
 }
 
 impl Session {
-    pub fn new(app_id: AppId) -> Session {
+    pub fn new(log: Logger, app_id: AppId) -> Session {
         Session {
-            app_id,
+            log, app_id,
             session_id: csrng_gen(),
             temp_session_id: None,
             server_salts: vec![],
@@ -225,6 +229,10 @@ impl Session {
             auth_key: None,
             to_ack: vec![],
         }
+    }
+
+    pub fn app_id(&self) -> &AppId {
+        &self.app_id
     }
 
     fn next_content_seq_no(&mut self) -> i32 {
@@ -298,6 +306,11 @@ impl Session {
     }
 
     pub fn serialize_plain_message(&mut self, message: MessageBuilder<PlainPayload>) -> Result<Vec<u8>> {
+        if cfg!(feature = "protocol-tracing") {
+            let as_json = serde_json::to_string(&message)
+                .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
+            trace!(self.log, "message out"; "as_json" => as_json);
+        }
         Ok(message.into_outbound_raw().bare_serialized_bytes()?)
     }
 
@@ -307,6 +320,11 @@ impl Session {
             .into_outbound_encrypted(
                 self.latest_server_salt()?, self.session_id,
                 |c| self.next_seq_no(c));
+        if cfg!(feature = "protocol-tracing") {
+            let as_json = serde_json::to_string(&message)
+                .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
+            trace!(self.log, "message out"; "as_json" => as_json);
+        }
         Ok(key.encrypt_message(message)?)
     }
 
@@ -329,6 +347,17 @@ impl Session {
     }
 
     pub fn process_message(&self, message: &[u8]) -> Result<InboundMessage> {
+        let message = self.process_message_internal(message)?;
+        if cfg!(feature = "protocol-tracing") {
+            let as_json = serde_json::to_string(&message)
+                .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
+            trace!(self.log, "message in"; "as_json" => as_json);
+        }
+        Ok(message)
+    }
+
+    #[inline(always)]
+    fn process_message_internal(&self, message: &[u8]) -> Result<InboundMessage> {
         if message.len() == 4 {
             Err(ErrorCode(LittleEndian::read_i32(&message)))?
         }
@@ -349,7 +378,7 @@ impl Session {
         let payload = &message[pos..pos+len];
         Ok(InboundMessage {
             message_id: message_id,
-            payload: payload.into(),
+            payload: mtproto::TLObject::boxed_deserialized_from_bytes(payload)?,
             was_encrypted: false,
             seq_no: None,
         })
@@ -364,8 +393,8 @@ impl Session {
             Err(SessionFailure::BadSalt)?
         }
         Ok(InboundMessage {
-            payload,
             message_id: inbound.message_id,
+            payload: mtproto::TLObject::boxed_deserialized_from_bytes(&payload)?,
             was_encrypted: true,
             seq_no: Some(inbound.seq_no),
         })

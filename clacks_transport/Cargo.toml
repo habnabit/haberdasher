@@ -13,8 +13,18 @@ chrono = "0.4.3"
 either = "1.5.0"
 failure = "0.1.1"
 rand = "0.4.2"
+serde = "1.0.82"
+serde_derive = "1.0.82"
 slog = "2.2.3"
 tokio-codec = "0.1.0"
+
+[dependencies.serde_json]
+version = "1.0.21"
+optional = true
+
+[dependencies.slog-scope]
+version = "4.0.1"
+optional = true
 
 [dependencies.clacks_mtproto]
 path = "../clacks_mtproto"
@@ -23,3 +33,11 @@ version = "0.73.0"
 [dependencies.clacks_crypto]
 path = "../clacks_crypto"
 version = "0.0.5"
+
+[features]
+default = []
+protocol-tracing = [
+    "serde_json",
+    "slog/max_level_trace",
+    "slog-scope",
+]
