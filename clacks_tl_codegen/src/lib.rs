@@ -499,7 +499,7 @@ impl AllConstructors {
         let mut all_constructors = Default::default();
         self.items.populate_all_constructors(&mut all_constructors);
         let dynamic_deserializers = all_constructors.iter()
-            .map(|c| c.as_dynamic_deserializer()).take(100);
+            .filter_map(|c| c.as_dynamic_deserializer());
 
         quote! {
 
@@ -1455,11 +1455,8 @@ impl Constructor<TypeIR, FieldIR> {
         }
     }
 
-    fn as_dynamic_deserializer(&self) -> Tokens {
-        let tl_id = match self.tl_id() {
-            Some(i) => i,
-            None => return quote!(),
-        };
+    fn as_dynamic_deserializer(&self) -> Option<Tokens> {
+        let tl_id = self.tl_id()?;
         let type_name = if self.is_function {
             Cow::Owned(format!("rpc.{}", self.original_variant))
         } else {
@@ -1476,9 +1473,9 @@ impl Constructor<TypeIR, FieldIR> {
             let generics = self.type_parameters.iter().map(|_| quote!(::mtproto::TLObject));
             ty = quote!(#ty<#(#generics),*>);
         }
-        quote! {
+        Some(quote! {
             ::DynamicDeserializer::from::<#ty>(#tl_id, #type_name)
-        }
+        })
     }
 }
 
@@ -1789,7 +1786,6 @@ pub fn generate_code_for(input: &str) -> std::io::Result<String> {
 
     let layer = constructors.layer as i32;
     let prelude = quote! {
-        #![allow(non_camel_case_types, non_snake_case)]
         pub use mtproto_prelude::*;
 
         pub const LAYER: i32 = #layer;

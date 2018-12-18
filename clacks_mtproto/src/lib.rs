@@ -16,7 +16,10 @@ macro_rules! _invalid_id {
     };
 }
 
-pub mod mtproto;
+#[allow(non_camel_case_types, non_snake_case)]
+pub mod mtproto {
+    include!(concat!(env!("OUT_DIR"), "/mtproto.rs"));
+}
 mod mtproto_prelude;
 
 use std::{fmt, io};
