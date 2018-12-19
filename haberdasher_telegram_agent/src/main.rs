@@ -16,28 +16,12 @@ use slog::Logger;
 use structopt::StructOpt;
 
 mod config;
+mod console;
 mod real_shutdown;
 pub use self::real_shutdown::RealShutdown;
 
 mod tg_manager;
 
-
-struct Delegate {
-    log: Logger,
-}
-
-impl Handler<clacks_rpc::client::Unhandled> for Delegate {
-    type Result = ();
-
-    fn handle(&mut self, unhandled: clacks_rpc::client::Unhandled, _: &mut Self::Context) {
-        info!(self.log, "unhandled {:?}", unhandled.0);
-        info!(self.log, "---json---\n{}\n---", serde_json::to_string_pretty(&unhandled.0).expect("not serialized"));
-    }
-}
-
-impl Actor for Delegate {
-    type Context = Context<Self>;
-}
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "haberdasher_telegram_agent")]
@@ -62,24 +46,34 @@ enum Command {
     },
 }
 
+fn mailbox_lift<T>(r: Result<Result<T, failure::Error>, actix::MailboxError>) -> Result<T, failure::Error> {
+    r?
+}
+
 fn main() -> Result<(), failure::Error> {
     use futures::{Future, Stream};
     use slog::Drain;
 
     let opts = Opt::from_args();
-    println!("opts: {:?}", opts);
     let self::config::AgentConfig { haberdasher, db, telegram } = config::load_config_file(&opts.config)?;
     let db_config = sled::ConfigBuilder::default()
         .path(&db.path)
         .build();
     let tree = std::sync::Arc::new(sled::Tree::start(db_config)?);
 
-    let decorator = slog_term::TermDecorator::new().build();
+    let decorator = slog_term::TermDecorator::new().stderr().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
     let drain = slog_envlogger::new(drain);
     let drain = slog_async::Async::new(drain).build().fuse();
     let log = slog::Logger::root(drain, o!());
     let _scoped = slog_scope::set_global_logger(log.new(o!("subsystem" => "implicit logger")));
+
+    let (_full_tokio_thread, full_tokio_executor) = {
+        let mut runtime = tokio::runtime::Runtime::new()?;
+        let executor = runtime.executor();
+        let handle = std::thread::spawn(move || runtime.block_on(future::empty::<(), ()>()));
+        (handle, executor)
+    };
 
     System::run(move || {
         let tg_manager = {
@@ -88,41 +82,37 @@ fn main() -> Result<(), failure::Error> {
         };
         match opts.cmd {
             Command::Login { phone_number } => {
+                let code_reader = self::console::AuthCodeReader::create({
+                    let lines = tokio::io::lines(std::io::BufReader::new(tokio::io::stdin()));
+                    let lines = futures::sync::mpsc::spawn(lines, &full_tokio_executor, 5);
+                    let log = log.new(o!("subsystem" => "auth code reader"));
+                    |ctx| self::console::AuthCodeReader::from_context(ctx, log, lines)
+                });
                 let connect = tg_manager::Connect {
                     phone_number: phone_number.into(),
                     test_mode: opts.test_mode,
                     dc_id: None,
+                    read_auth_code: Some(code_reader.recipient()),
                 };
                 let tg_manager = tg_manager.clone();
                 Arbiter::spawn_fn(move || {
                     tg_manager.send(connect)
+                        .then(mailbox_lift)
+                        .and_then(move |client| {
+                            client.send(clacks_rpc::client::CallFunction::encrypted(
+                                clacks_mtproto::mtproto::rpc::users::GetFullUser {
+                                    id: clacks_mtproto::mtproto::InputUser::Self_,
+                                }))
+                                .then(mailbox_lift)
+                        })
                         .then(move |r| {
-                            info!(log, "login result: {:?}", r.map(|_| ()));
+                            info!(log, "login complete"; "result" => format!("{:#?}", r));
                             Ok(())
                         })
                 })
             }
             Command::Run {} => {}
         }
-        // let jsonrpc = {
-        //     let log = log.new(o!("subsystem" => "jsonrpc handler"));
-        //     jsonrpc_handler::JsonRpcHandlerActor::new(log, tg_manager).start()
-        // };
-        // Arbiter::spawn({
-        //     let log = log.clone();
-        //     tokio_uds::UnixListener::bind("socket")
-        //         .into_future()
-        //         .and_then(|l| l.incoming().for_each(move |conn| {
-        //             let log = log.new(o!("connection" => format!("{:?}", conn)));
-        //             let jsonrpc = jsonrpc.clone();
-        //             info!(log, "spawning");
-        //             let addr = agent_connection::AgentActor::create(|ctx| {
-        //                 agent_connection::AgentActor::from_context(ctx, log, conn, jsonrpc)
-        //             });
-        //             Ok(())
-        //         }))
-        //         .map_err(|e| panic!("fatal {:?}", e))
-        // });
     });
 
     Ok(())

@@ -44,17 +44,12 @@ impl<K> std::ops::Deref for Entry<K> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDataV1 {
     pub native_dc: u32,
+    pub authed_user: mtproto::user::User,
 }
 
 #[derive(Debug, Clone)]
 pub struct UserData<'a> {
     pub phone_number: Cow<'a, str>,
-}
-
-impl<'a> UserData<'a> {
-    pub fn as_auth_key(&self) -> UserAuthKey<'a> {
-        UserAuthKey { phone_number: self.phone_number.clone() }
-    }
 }
 
 impl<'a> Kind for UserData<'a> {
@@ -70,6 +65,12 @@ pub struct UserAuthKeyV1 {
 #[derive(Debug, Clone)]
 pub struct UserAuthKey<'a> {
     pub phone_number: Cow<'a, str>,
+}
+
+impl<'a> UserAuthKey<'a> {
+    pub fn as_user_data(&self) -> UserData<'a> {
+        UserData { phone_number: self.phone_number.clone() }
+    }
 }
 
 impl<'a> Kind for UserAuthKey<'a> {
