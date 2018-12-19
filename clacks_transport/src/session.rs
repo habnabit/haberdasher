@@ -7,7 +7,7 @@ use clacks_mtproto::mtproto::wire::outbound_raw::OutboundRaw;
 use byteorder::{LittleEndian, ByteOrder, ReadBytesExt};
 use either::Either;
 use serde_derive::Serialize;
-use slog::Logger;
+use slog::{Drain, Logger};
 use std::{cmp, io, mem};
 
 use super::Result;
@@ -306,10 +306,14 @@ impl Session {
     }
 
     pub fn serialize_plain_message(&mut self, message: MessageBuilder<PlainPayload>) -> Result<Vec<u8>> {
-        if cfg!(feature = "protocol-tracing") {
-            let as_json = serde_json::to_string(&message)
-                .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
-            trace!(self.log, "message out"; "as_json" => as_json);
+        match () {
+            #[cfg(feature = "protocol-tracing")]
+            () if self.log.is_enabled(slog::Level::Trace) => {
+                let as_json = serde_json::to_string(&message)
+                    .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
+                trace!(self.log, "message out"; "as_json" => as_json);
+            }
+            _ => {}
         }
         Ok(message.into_outbound_raw().bare_serialized_bytes()?)
     }
@@ -320,10 +324,14 @@ impl Session {
             .into_outbound_encrypted(
                 self.latest_server_salt()?, self.session_id,
                 |c| self.next_seq_no(c));
-        if cfg!(feature = "protocol-tracing") {
-            let as_json = serde_json::to_string(&message)
-                .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
-            trace!(self.log, "message out"; "as_json" => as_json);
+        match () {
+            #[cfg(feature = "protocol-tracing")]
+            () if self.log.is_enabled(slog::Level::Trace) => {
+                let as_json = serde_json::to_string(&message)
+                    .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
+                trace!(self.log, "message out"; "as_json" => as_json);
+            }
+            _ => {}
         }
         Ok(key.encrypt_message(message)?)
     }
@@ -348,10 +356,14 @@ impl Session {
 
     pub fn process_message(&self, message: &[u8]) -> Result<InboundMessage> {
         let message = self.process_message_internal(message)?;
-        if cfg!(feature = "protocol-tracing") {
-            let as_json = serde_json::to_string(&message)
-                .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
-            trace!(self.log, "message in"; "as_json" => as_json);
+        match () {
+            #[cfg(feature = "protocol-tracing")]
+            () if self.log.is_enabled(slog::Level::Trace) => {
+                let as_json = serde_json::to_string(&message)
+                    .unwrap_or_else(|e| format!("<json broke: {:?}>", e));
+                trace!(self.log, "message in"; "as_json" => as_json);
+            }
+            _ => {}
         }
         Ok(message)
     }

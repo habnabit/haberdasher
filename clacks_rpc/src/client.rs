@@ -19,7 +19,7 @@ use super::Result;
 macro_rules! async_handler {
     (fn handle ($($generics:tt)*) ($this:ident: $actor_ty:ty, $input:ident: $input_ty:ty, $ctx:ident) -> $output_ty:ty $output:block) => {
         impl <$($generics)*> Handler<$input_ty> for $actor_ty {
-            type Result = Box<Future<Item = $output_ty, Error = Error>>;
+            type Result = Box<dyn futures::Future<Item = $output_ty, Error = failure::Error>>;
 
             fn handle(&mut self, $input: $input_ty, $ctx: &mut Self::Context) -> Self::Result {
                 let fut = match (move || {
@@ -27,7 +27,7 @@ macro_rules! async_handler {
                     $output
                 })() {
                     Ok(f) => tokio_async_await::compat::backward::Compat::new(f),
-                    Err(e) => return Box::new(future::err(e)),
+                    Err(e) => return Box::new(futures::future::err(e)),
                 };
                 Box::new(fut)
             }
@@ -41,7 +41,6 @@ pub struct RpcClientActor {
     log: Logger,
     session: Session,
     tg_tx: Option<actix::io::FramedWrite<Box<tokio_io::AsyncWrite>, TelegramCodec>>,
-    tg_rx: actix::SpawnHandle,
     delegates: EventDelegates,
     pending_rpcs: BTreeMap<i64, (ConstructorNumber, Responder)>,
 }
@@ -66,11 +65,11 @@ impl RpcClientActor {
     {
         let session = Session::new(log.new(o!("subsystem" => "session")), app_id);
         let (tg_rx, tg_tx) = stream.split();
-        let tg_rx = ctx.add_stream(tokio_codec::FramedRead::new(tg_rx, TelegramCodec::new()));
+        ctx.add_stream(tokio_codec::FramedRead::new(tg_rx, TelegramCodec::new()));
         let tg_tx: Box<tokio_io::AsyncWrite> = Box::new(tg_tx);
         let tg_tx = actix::io::FramedWrite::new(tg_tx, TelegramCodec::new(), ctx);
         RpcClientActor {
-            log, session, tg_rx,
+            log, session,
             tg_tx: Some(tg_tx),
             delegates: Default::default(),
             pending_rpcs: BTreeMap::new(),
@@ -443,7 +442,7 @@ pub struct SendAuthCode {
 }
 
 impl Message for SendAuthCode {
-    type Result = Result<()>;
+    type Result = Result<mtproto::auth::Authorization>;
 }
 
 #[derive(Debug, Fail)]
@@ -456,7 +455,7 @@ pub enum AuthError {
 #[fail(display = "")]
 pub struct AuthRedirectTo(pub u32);
 
-async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> () {
+async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtproto::auth::Authorization {
     let SendAuthCode { phone_number } = req;
     let log = this.log.clone();
     let app_id = this.session.app_id();
@@ -495,6 +494,7 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> () {
                         phone_number: phone_number.clone(),
                         phone_code_hash: sent.phone_code_hash.clone(),
                     })))??;
+                    return Ok(auth);
                 }
                 Resend => {
                     let mtproto::auth::SentCode::SentCode(reply) = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
