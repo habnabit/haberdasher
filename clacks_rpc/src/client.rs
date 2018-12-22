@@ -380,6 +380,7 @@ impl Message for Unhandled {
 pub struct ReadAuthCode {
     pub phone_number: String,
     pub type_: mtproto::auth::SentCodeType,
+    pub last_error: Option<mtproto::rpc_error::RpcError>,
 }
 #[derive(Debug, Clone)]
 pub enum AuthCodeReply {
@@ -482,19 +483,26 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
                 }
             },
         };
+        let mut last_error = None;
         loop {
             use self::AuthCodeReply::*;
             match await!(addr.send(SendToDelegate(ReadAuthCode {
                 phone_number: phone_number.clone(),
                 type_: sent.type_.clone(),
+                last_error: last_error.take(),
             })))?? {
                 Code(phone_code) => {
-                    let auth = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::SignIn {
+                    match await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::SignIn {
                         phone_code,
                         phone_number: phone_number.clone(),
                         phone_code_hash: sent.phone_code_hash.clone(),
-                    })))??;
-                    return Ok(auth);
+                    })))? {
+                        Ok(auth) => return Ok(auth),
+                        Err(e) => {
+                            let mtproto::RpcError::RpcError(e) = e.downcast::<UpstreamRpcError>()?.0;
+                            last_error = Some(e);
+                        }
+                    }
                 }
                 Resend => {
                     let mtproto::auth::SentCode::SentCode(reply) = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
