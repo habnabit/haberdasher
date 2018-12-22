@@ -50,6 +50,22 @@ fn mailbox_lift<T>(r: Result<Result<T, failure::Error>, actix::MailboxError>) ->
     r?
 }
 
+struct FullTokio {
+    thread: std::thread::JoinHandle<Result<(), failure::Error>>,
+    executor: tokio::runtime::TaskExecutor,
+    shutdown_tx: futures::sync::oneshot::Sender<()>,
+}
+
+impl FullTokio {
+    fn spawn() -> Result<Self, failure::Error> {
+        let mut runtime = tokio::runtime::Runtime::new()?;
+        let executor = runtime.executor();
+        let (shutdown_tx, shutdown_rx) = futures::sync::oneshot::channel();
+        let thread = std::thread::spawn(move || Ok(runtime.block_on(shutdown_rx)?));
+        Ok(FullTokio { thread, executor, shutdown_tx })
+    }
+}
+
 fn main() -> Result<(), failure::Error> {
     use futures::{Future, Stream};
     use slog::Drain;
@@ -68,12 +84,7 @@ fn main() -> Result<(), failure::Error> {
     let log = slog::Logger::root(drain, o!());
     let _scoped = slog_scope::set_global_logger(log.new(o!("subsystem" => "implicit logger")));
 
-    let (_full_tokio_thread, full_tokio_executor) = {
-        let mut runtime = tokio::runtime::Runtime::new()?;
-        let executor = runtime.executor();
-        let handle = std::thread::spawn(move || runtime.block_on(future::empty::<(), ()>()));
-        (handle, executor)
-    };
+    let full_tokio = FullTokio::spawn()?;
 
     System::run(move || {
         let tg_manager = {
@@ -84,7 +95,7 @@ fn main() -> Result<(), failure::Error> {
             Command::Login { phone_number } => {
                 let code_reader = self::console::AuthCodeReader::create({
                     let lines = tokio::io::lines(std::io::BufReader::new(tokio::io::stdin()));
-                    let lines = futures::sync::mpsc::spawn(lines, &full_tokio_executor, 5);
+                    let lines = futures::sync::mpsc::spawn(lines, &full_tokio.executor, 5);
                     let log = log.new(o!("subsystem" => "auth code reader"));
                     |ctx| self::console::AuthCodeReader::from_context(ctx, log, lines)
                 });
