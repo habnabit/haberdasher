@@ -1560,6 +1560,22 @@ impl Constructors<TypeIR, FieldIR> {
         map
     }
 
+    fn as_only_unwrap(&self, enum_name: &syn::Ident) -> Option<Tokens> {
+        let &Matched(ref cons, _) = self.0.first()?;
+        if self.0.len() != 1 || cons.fields.is_empty() {
+            return None
+        }
+        let cons_name = cons.variant_name();
+        let ty = cons.variant.unboxed();
+        Some(quote! {
+            pub fn only(self) -> #ty {
+                match self {
+                    #enum_name::#cons_name(x) => x
+                }
+            }
+        })
+    }
+
     fn determine_methods(&self, enum_name: &syn::Ident) -> Tokens {
         let all_constructors = self.0.len();
         let mut methods = vec![];
@@ -1595,6 +1611,8 @@ impl Constructors<TypeIR, FieldIR> {
                 }
             });
         }
+
+        methods.extend(self.as_only_unwrap(enum_name));
 
         if methods.is_empty() {
             quote!()
