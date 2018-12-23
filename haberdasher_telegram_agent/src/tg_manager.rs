@@ -119,8 +119,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> Add
                 Some(perm_key)
             }
         };
-        let mtproto::Config::Config(config) = await!(
-            client.send(<client::InitConnection as Default>::default()))??;
+        let config = await!(client.send(<client::InitConnection as Default>::default()))??.only();
         let native_dc = config.this_dc as u32;
         save_config(config, &tree)?;
         info!(log, "config saved");

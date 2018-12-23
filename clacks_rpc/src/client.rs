@@ -289,8 +289,7 @@ macro_rules! scan_type {
 
 scan_type! {
     (this, ctx, mc: mtproto::manual::MessageContainer) {
-        let mtproto::manual::MessageContainer::MsgContainer(mc) = mc;
-        for msg in mc.messages.0 {
+        for msg in mc.only().messages.0 {
             this.maybe_ack(Some(msg.seqno), msg.msg_id);
             this.scan_replies(ctx, msg.body.0)?;
         }
@@ -298,7 +297,7 @@ scan_type! {
     }
 
     (this, ctx, rpc: mtproto::manual::RpcResult) {
-        let mtproto::manual::RpcResult::RpcResult(rpc) = rpc;
+        let rpc = rpc.only();
         let (_, replier) = this.get_replier(rpc.req_msg_id)?;
         let result = match rpc.result.downcast::<mtproto::RpcError>() {
             Ok(err) => Err(UpstreamRpcError(err).into()),
@@ -499,16 +498,15 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
                     })))? {
                         Ok(auth) => return Ok(auth),
                         Err(e) => {
-                            let mtproto::RpcError::RpcError(e) = e.downcast::<UpstreamRpcError>()?.0;
-                            last_error = Some(e);
+                            last_error = Some(e.downcast::<UpstreamRpcError>()?.0.only());
                         }
                     }
                 }
                 Resend => {
-                    let mtproto::auth::SentCode::SentCode(reply) = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
+                    let reply = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
                         phone_number: phone_number.clone(),
                         phone_code_hash: sent.phone_code_hash.clone(),
-                    })))??;
+                    })))??.only();
                     sent = reply;
                 }
                 Cancel => {

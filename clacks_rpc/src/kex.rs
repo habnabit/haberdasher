@@ -34,7 +34,7 @@ pub async fn kex<E>(addr: Addr<client::RpcClientActor>, pq_executor: E, expires_
     where E: future::Executor<Box<Future<Item = (), Error = ()> + Send>>
 {
     let nonce = csrng_gen();
-    let mtproto::ResPQ::ResPQ(pq) = await!(addr.send(client::CallFunction::plain(mtproto::rpc::ReqPq { nonce })))??;
+    let pq = await!(addr.send(client::CallFunction::plain(mtproto::rpc::ReqPq { nonce })))??.only();
     assert_eq!(nonce, pq.nonce);
     let server_nonce = pq.server_nonce;
     let pq_future: oneshot::SpawnHandle<(mtproto::bytes, mtproto::bytes), ::failure::Error> = oneshot::spawn_fn({
