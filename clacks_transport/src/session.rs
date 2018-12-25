@@ -94,7 +94,7 @@ impl<PO: Default> MessageBuilder<PO> {
     fn with_message_id<P>(message_id: i64, payload: P) -> Self
         where P: AnyBoxedSerialize,
     {
-        let payload = mtproto::TLObject::new(payload).into();
+        let payload = mtproto::TLObject::new(payload);
         MessageBuilder {
             message_id, payload,
             payload_opts: Default::default(),
@@ -256,9 +256,9 @@ impl Session {
                 None => Err(SessionFailure::NoSalts)?,
             };
             // Make sure at least one salt is retained.
-            cmp::min(Utc::now(), last_salt.valid_until.clone())
+            cmp::min(Utc::now(), last_salt.valid_until)
         };
-        self.server_salts.retain(|s| &s.valid_until >= &time);
+        self.server_salts.retain(|s| s.valid_until >= time);
         Ok(self.server_salts.first().unwrap().salt)
     }
 
@@ -389,7 +389,7 @@ impl Session {
         ensure!(message.len() >= pos + len, clacks_crypto::symm::AuthenticationFailure::BadLength);
         let payload = &message[pos..pos+len];
         Ok(InboundMessage {
-            message_id: message_id,
+            message_id,
             payload: mtproto::TLObject::boxed_deserialized_from_bytes(payload)?,
             was_encrypted: false,
             seq_no: None,

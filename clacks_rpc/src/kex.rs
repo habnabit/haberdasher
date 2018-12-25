@@ -25,7 +25,7 @@ impl<E, F> future::Executor<F> for BoxExecutor<E>
 {
     fn execute(&self, future: F) -> ::std::result::Result<(), future::ExecuteError<F>> {
         self.0.execute(Box::new(future))
-            .map_err(|e| unimplemented!())
+            .map_err(|_| unimplemented!())
     }
 }
 

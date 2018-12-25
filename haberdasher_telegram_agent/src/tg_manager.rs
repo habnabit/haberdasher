@@ -1,25 +1,14 @@
 //use actix::{self, Actor, Addr, Arbiter, AsyncContext, Context, StreamHandler, System};
 use actix::prelude::*;
 use clacks_mtproto::mtproto;
-use clacks_rpc::client::{self, CallFunction, RpcClientActor, SendMessage};
-use failure::Error;
-use futures::{Future, IntoFuture, future};
+use clacks_rpc::client::{self, RpcClientActor};
 use slog::Logger;
 use std::collections::BTreeMap;
-use std::io;
 use std::sync::Arc;
-use tokio_codec::{FramedRead, LinesCodec};
 
 use super::config::{Entry, TelegramDatacenter, TelegramServersV1, UserAuthKey, UserAuthKeyV1, UserData, UserDataV1};
 
 type Result<T> = std::result::Result<T, failure::Error>;
-
-fn wrap_async<A, T, E, F>(f: F) -> impl ActorFuture<Item = T, Error = E, Actor = A>
-    where A: Actor,
-          F: std::future::Future<Output = std::result::Result<T, E>>,
-{
-    actix::fut::wrap_future(tokio_async_await::compat::backward::Compat::new(f))
-}
 
 #[derive(Debug, Clone, Fail)]
 #[fail(display = "")]
@@ -125,7 +114,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> Add
         info!(log, "config saved");
         if let Some(perm_key) = to_persist {
             let authed_user = match await!(client.send(client::SendAuthCode {
-                phone_number: req.phone_number.clone().into(),
+                phone_number: req.phone_number.clone(),
             }))? {
                 Ok(mtproto::auth::Authorization::Authorization(mtproto::auth::authorization::Authorization {
                     user: mtproto::User::User(user), ..
@@ -162,23 +151,6 @@ fn save_config(config: mtproto::config::Config, save_to: &sled::Tree) -> Result<
     Ok(())
 }
 
-impl Handler<SendMessage> for TelegramManagerActor {
-    type Result = ResponseFuture<mtproto::TLObject, Error>;
-
-    fn handle(&mut self, req: SendMessage, ctx: &mut Self::Context) -> Self::Result {
-        Box::new({
-            self.connections.values().next()
-                .ok_or_else(|| format_err!("no connection"))
-                .map(|c| {
-                    c.send(req).map_err(|e| -> Error { e.into() })
-                })
-                .into_future()
-                .and_then(|f| f)
-                .and_then(|r| r)
-        })
-    }
-}
-
 struct Delegate {
     log: Logger,
 }
@@ -186,10 +158,9 @@ struct Delegate {
 impl Handler<client::Unhandled> for Delegate {
     type Result = ();
 
-    fn handle(&mut self, unhandled: client::Unhandled, ctx: &mut Self::Context) {
+    fn handle(&mut self, unhandled: client::Unhandled, _: &mut Self::Context) {
         info!(self.log, "unhandled {:?}", unhandled.0);
         info!(self.log, "---json---\n{}\n---", ::serde_json::to_string_pretty(&unhandled.0).expect("not serialized"));
-        //self.0.start_send(unhandled);
     }
 }
 

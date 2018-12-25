@@ -8,7 +8,7 @@ use {Padding, Result, sha1_and_or_pad};
 #[derive(Debug)]
 pub struct RsaPublicKeyRef<'a>(&'a [u8]);
 
-pub const KNOWN_KEYS: &'static [RsaPublicKeyRef<'static>] = &[
+pub const KNOWN_KEYS: &[RsaPublicKeyRef<'static>] = &[
     RsaPublicKeyRef(b"\
 -----BEGIN PUBLIC KEY-----\n\
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwVACPi9w23mF3tBkdZz+\n\

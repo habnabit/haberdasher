@@ -9,10 +9,7 @@
 #[macro_use] extern crate tokio;
 
 use actix::prelude::*;
-use clacks_mtproto::{BoxedDeserialize, BoxedSerialize, IntoBoxed, mtproto};
-use futures::{Future, Sink, Stream, future};
-use futures::prelude::*;
-use slog::Logger;
+use futures::Future;
 use structopt::StructOpt;
 
 mod config;
@@ -67,11 +64,10 @@ impl FullTokio {
 }
 
 fn main() -> Result<(), failure::Error> {
-    use futures::{Future, Stream};
     use slog::Drain;
 
     let opts = Opt::from_args();
-    let self::config::AgentConfig { haberdasher, db, telegram } = config::load_config_file(&opts.config)?;
+    let self::config::AgentConfig { db, telegram, .. } = config::load_config_file(&opts.config)?;
     let db_config = sled::ConfigBuilder::default()
         .path(&db.path)
         .build();
@@ -100,7 +96,7 @@ fn main() -> Result<(), failure::Error> {
                     |ctx| self::console::AuthCodeReader::from_context(ctx, log, lines)
                 });
                 let connect = tg_manager::Connect {
-                    phone_number: phone_number.into(),
+                    phone_number,
                     test_mode: opts.test_mode,
                     dc_id: None,
                     read_auth_code: Some(code_reader.recipient()),

@@ -1,3 +1,4 @@
+#![allow(clippy::unreadable_literal)]
 #![deny(private_in_public, unused_extern_crates)]
 
 #[macro_use] extern crate erased_serde;
@@ -149,7 +150,8 @@ impl<'w> Serializer<'w> {
 
     pub fn write_constructor(&mut self, id: ConstructorNumber) -> Result<()> {
         use byteorder::{LittleEndian, WriteBytesExt};
-        Ok(self.write_u32::<LittleEndian>(id.0)?)
+        self.write_u32::<LittleEndian>(id.0)?;
+        Ok(())
     }
 
     #[inline(always)]
@@ -187,7 +189,7 @@ pub trait BareSerialize {
 }
 
 pub trait BoxedSerialize {
-    fn serialize_boxed<'this>(&'this self) -> (ConstructorNumber, &'this BareSerialize);
+    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize);
 
     fn boxed_serialized_bytes(&self) -> Result<Vec<u8>> {
         let mut buf: Vec<u8> = vec![];

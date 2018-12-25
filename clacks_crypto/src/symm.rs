@@ -70,7 +70,7 @@ impl AesParams {
 fn set_slice_parts(result: &mut [u8], parts: &[&[u8]]) {
     let mut cursor = Cursor::new(result);
     for part in parts {
-        cursor.write(part).unwrap();
+        cursor.write_all(part).unwrap();
     }
 }
 
@@ -100,25 +100,21 @@ impl AuthKey {
     pub const SIZE: usize = 256;
 
     pub fn new(key_in: &[u8]) -> Result<AuthKey> {
-        let mut key = [0u8; AuthKey::SIZE];
+        let mut auth_key = [0u8; AuthKey::SIZE];
         let size_diff = (AuthKey::SIZE as isize) - (key_in.len() as isize);
         if size_diff > 0 {
             // key longer than key_in
-            (&mut key[size_diff as usize..]).copy_from_slice(key_in);
+            (&mut auth_key[size_diff as usize..]).copy_from_slice(key_in);
         } else if size_diff < 0 {
             // key_in longer than key
             Err(format_err!("auth key too short"))?
         } else {
-            key.copy_from_slice(key_in);
+            auth_key.copy_from_slice(key_in);
         }
-        let sha1 = sha1_bytes(&[&key])?;
+        let sha1 = sha1_bytes(&[&auth_key])?;
         let aux_hash = LittleEndian::read_i64(&sha1[0..8]);
         let fingerprint = LittleEndian::read_i64(&sha1[12..20]);
-        Ok(AuthKey {
-            auth_key: key,
-            aux_hash: aux_hash,
-            fingerprint: fingerprint,
-        })
+        Ok(AuthKey { auth_key, aux_hash, fingerprint })
     }
 
     fn generate_message_aes_params(&self, msg_key: &[u8], mode: symm::Mode) -> Result<AesParams> {
@@ -146,7 +142,7 @@ impl AuthKey {
         let mut input = [0u8; 41];
         {
             let mut cursor = Cursor::new(&mut input[..]);
-            cursor.write(&new_nonce).unwrap();
+            cursor.write_all(&new_nonce).unwrap();
             cursor.write_u8(which).unwrap();
             cursor.write_i64::<LittleEndian>(self.aux_hash).unwrap();
         }
@@ -191,7 +187,7 @@ impl AuthKey {
         };
         let payload = &payload[..payload_len];
         let computed_message_hash = sha1_bytes(&[&decrypted[..decrypted.len() - padding]])?;
-        if &message[8..24] != &computed_message_hash[4..20] {
+        if message[8..24] != computed_message_hash[4..20] {
             Err(AuthenticationFailure::BadHash)?;
         }
         Ok((inbound, payload.into()))

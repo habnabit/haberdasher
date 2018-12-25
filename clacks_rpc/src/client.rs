@@ -1,11 +1,11 @@
-use actix::{self, Actor, Addr, Arbiter, AsyncContext, Context, StreamHandler, System};
+use actix::{self, Actor, AsyncContext, Context, StreamHandler};
 use actix::prelude::*;
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use clacks_crypto::symm::AuthKey;
 use clacks_mtproto::{AnyBoxedSerialize, BoxedDeserialize, ConstructorNumber, mtproto};
 use clacks_transport::{AppId, Session, TelegramCodec, session};
 use failure::Error;
-use futures::{self, Future, IntoFuture, Sink, Stream, future, stream};
+use futures::{self, IntoFuture};
 use futures::sync::oneshot;
 use slog::Logger;
 use std::io;
@@ -87,14 +87,28 @@ impl RpcClientActor {
         self.pending_rpcs.remove(&msg_id)
             .ok_or_else(|| format_err!("no matching rpc for {}", msg_id))
     }
+
+    fn handle_bytes(&mut self, vec: Vec<u8>, ctx: &mut Context<Self>) -> Result<()> {
+        let message = self.session.process_message(&vec)?;
+        if message.was_encrypted {
+            self.maybe_ack(message.seq_no, message.message_id);
+            self.scan_replies(ctx, message.payload)?;
+        } else if self.pending_rpcs.len() != 1 {
+            // XXX: can't dispatch this message
+        } else {
+            let (_, sender) = self.pending_rpcs.keys()
+                .next().cloned()
+                .and_then(|key| self.pending_rpcs.remove(&key))
+                .ok_or_else(|| format_err!("can't figure out who to reply to"))?;
+            // XXX: figure out how to plumb through RPC errors
+            let _ = sender.send(Ok(message.payload));
+        }
+        Ok(())
+    }
 }
 
 impl Actor for RpcClientActor {
     type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-
-    }
 }
 
 impl actix::io::WriteHandler<io::Error> for RpcClientActor {
@@ -103,28 +117,13 @@ impl actix::io::WriteHandler<io::Error> for RpcClientActor {
 
 impl StreamHandler<Vec<u8>, io::Error> for RpcClientActor {
     fn handle(&mut self, vec: Vec<u8>, ctx: &mut Self::Context) {
-        let message = match self.session.process_message(&vec) {
-            Ok(m) => m,
-            Err(e) => return,
-        };
-        if message.was_encrypted {
-            self.maybe_ack(message.seq_no, message.message_id);
-            match self.scan_replies(ctx, message.payload) {
-                Ok(()) => (),
-                Err(e) => {
-
-                },
+        match self.handle_bytes(vec, ctx) {
+            Ok(()) => {}
+            Err(e) => {
+                crit!(self.log, "error handling wire data"; "err" => ?e);
             }
-        } else if self.pending_rpcs.len() != 1 {
-            // XXX: can't dispatch this message
-        } else {
-            let key = *self.pending_rpcs.keys().next().unwrap();
-            let (_, sender) = self.pending_rpcs.remove(&key).unwrap();
-            // XXX: figure out how to plumb through RPC errors
-            let _ = sender.send(Ok(message.payload));
         }
     }
-
 }
 
 pub struct SendMessage {
@@ -153,7 +152,7 @@ impl Message for SendMessage {
     type Result = Result<mtproto::TLObject>;
 }
 
-async_handler!(fn handle()(this: RpcClientActor, message: SendMessage, ctx) -> mtproto::TLObject {
+async_handler!(fn handle()(this: RpcClientActor, message: SendMessage, _ctx) -> mtproto::TLObject {
     use std::collections::btree_map::Entry::*;
     let tg_tx = this.tg_tx.as_mut().ok_or(RpcError::ConnectionClosed)?;
     let message = message.builder;
@@ -296,7 +295,7 @@ scan_type! {
         Ok(())
     }
 
-    (this, ctx, rpc: mtproto::manual::RpcResult) {
+    (this, _ctx, rpc: mtproto::manual::RpcResult) {
         let rpc = rpc.only();
         let (_, replier) = this.get_replier(rpc.req_msg_id)?;
         let result = match rpc.result.downcast::<mtproto::RpcError>() {
@@ -307,13 +306,13 @@ scan_type! {
         Ok(())
     }
 
-    (this, ctx, pong: mtproto::Pong) {
+    (this, _ctx, pong: mtproto::Pong) {
         let (_, replier) = this.get_replier(*pong.msg_id())?;
         let _ = replier.send(Ok(mtproto::TLObject::new(pong)));
         Ok(())
     }
 
-    (this, ctx, salts: mtproto::FutureSalts) {
+    (this, _ctx, salts: mtproto::FutureSalts) {
         let (_, replier) = this.get_replier(*salts.req_msg_id())?;
         let _ = replier.send(Ok(mtproto::TLObject::new(salts)));
         Ok(())
@@ -423,7 +422,7 @@ impl Message for SendToDelegate<ReadAuthCode> {
 impl Handler<SendToDelegate<ReadAuthCode>> for RpcClientActor {
     type Result = ResponseActFuture<Self, AuthCodeReply, failure::Error>;
 
-    fn handle(&mut self, to_send: SendToDelegate<ReadAuthCode>, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, to_send: SendToDelegate<ReadAuthCode>, _: &mut Self::Context) -> Self::Result {
         match &self.delegates.read_auth_code {
             Some(addr) => Box::new({
                 actix::fut::wrap_future(addr.send(to_send.0))
@@ -457,7 +456,6 @@ pub struct AuthRedirectTo(pub u32);
 
 async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtproto::auth::Authorization {
     let SendAuthCode { phone_number } = req;
-    let log = this.log.clone();
     let app_id = this.session.app_id();
     let send_code = mtproto::rpc::auth::SendCode {
         allow_flashcall: false,

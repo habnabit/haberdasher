@@ -52,14 +52,14 @@ macro_rules! impl_byteslike {
         impl BareDeserialize for $ty {
             fn deserialize_bare(de: &mut Deserializer) -> Result<Self> {
                 let mut ret: Self = Default::default();
-                de.read(&mut ret.0)?;
+                de.read_exact(&mut ret.0)?;
                 Ok(ret)
             }
         }
 
         impl BareSerialize for $ty {
             fn serialize_bare(&self, ser: &mut Serializer) -> Result<()> {
-                ser.write(&self.0)?;
+                ser.write_all(&self.0)?;
                 Ok(())
             }
         }
@@ -238,7 +238,7 @@ impl<'de> serde::Deserialize<'de> for TLObject {
 }
 
 impl BoxedSerialize for TLObject {
-    fn serialize_boxed<'this>(&'this self) -> (ConstructorNumber, &'this BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
         self.0.serialize_boxed()
     }
 }
@@ -282,7 +282,7 @@ impl BoxedDeserialize for TransparentGunzip {
 }
 
 impl BoxedSerialize for TransparentGunzip {
-    fn serialize_boxed<'this>(&'this self) -> (ConstructorNumber, &'this BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
         self.inner.serialize_boxed()
     }
 }
@@ -329,7 +329,7 @@ impl<T> BareSerialize for LengthPrefixed<T>
     fn serialize_bare(&self, ser: &mut Serializer) -> Result<()> {
         let inner = self.0.boxed_serialized_bytes()?;
         ser.write_i32::<LittleEndian>(inner.len() as i32)?;
-        ser.write(&inner)?;
+        ser.write_all(&inner)?;
         Ok(())
     }
 }
@@ -375,7 +375,7 @@ impl BoxedDeserialize for bool {
 }
 
 impl BoxedSerialize for bool {
-    fn serialize_boxed<'this>(&'this self) -> (ConstructorNumber, &'this BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
         let b: &'static Bool = (*self).into();
         Bool::serialize_boxed(b)
     }
@@ -410,7 +410,7 @@ impl<T> BoxedDeserialize for Box<T>
 impl<T> BoxedSerialize for Box<T>
     where T: BoxedSerialize,
 {
-    fn serialize_boxed<'this>(&'this self) -> (ConstructorNumber, &'this BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
         T::serialize_boxed(self)
     }
 }
@@ -523,7 +523,7 @@ macro_rules! impl_vector {
         impl<T> BoxedSerialize for Vector<$det, T>
             where Self: BareSerialize,
         {
-            fn serialize_boxed<'this>(&'this self) -> (ConstructorNumber, &'this BareSerialize) {
+            fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
                 (VECTOR_CONSTRUCTOR, self)
             }
         }
