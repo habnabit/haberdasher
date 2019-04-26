@@ -4,6 +4,7 @@ use clacks_mtproto::mtproto;
 use clacks_rpc::client::{self, RpcClientActor};
 use slog::Logger;
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use super::config::{Entry, TelegramDatacenter, TelegramServersV1, UserAuthKey, UserAuthKeyV1, UserData, UserDataV1};
@@ -61,10 +62,10 @@ pub struct Connect {
 }
 
 impl Message for Connect {
-    type Result = Result<Addr<RpcClientActor>>;
+    type Result = Result<(UserDc, Addr<RpcClientActor>)>;
 }
 
-async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> Addr<RpcClientActor> {
+async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> (UserDc, Addr<RpcClientActor>) {
     let servers = this.servers_for(&req)?;
     let manager = ctx.address();
     let log = this.log.new(o!());
@@ -133,7 +134,12 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> Add
             Entry::new(user_auth.as_user_data()).set(&tree, &UserDataV1 { native_dc, authed_user })?;
             user_auth.set(&tree, &UserAuthKeyV1 { auth_key: (&perm_key.into_inner()[..]).into() })?;
         }
-        Ok(client)
+        let user_dc = UserDc {
+            phone_number: req.phone_number,
+            dc: native_dc,
+            primary: true,
+        };
+        Ok((user_dc, client))
     })
 });
 
@@ -151,6 +157,42 @@ fn save_config(config: mtproto::config::Config, save_to: &sled::Tree) -> Result<
     Ok(())
 }
 
+pub struct SpawnClient {
+    pub phone_number: String,
+    pub test_mode: bool,
+}
+
+impl Message for SpawnClient {
+    type Result = Result<()>;
+}
+
+async_handler!(fn handle()(this: TelegramManagerActor, req: SpawnClient, ctx) -> () {
+    let connect = Connect {
+        phone_number: req.phone_number,
+        test_mode: req.test_mode,
+        dc_id: None,
+        read_auth_code: None,
+    };
+    let log = this.log.clone();
+    let manager = ctx.address();
+    Ok(async move {
+        let (user_dc, client) = await!(manager.send(connect))??;
+        let saved_client = client.clone();
+        await!(manager.send(Trampoline::new(move |this: &mut Self, _ctx| {
+            this.connections.insert(user_dc, saved_client);
+        })))?;
+        let dialogs = await!(client.send(client::CallFunction::encrypted(mtproto::rpc::messages::GetDialogs {
+            exclude_pinned: false,
+            offset_date: 0,
+            offset_id: 0,
+            offset_peer: mtproto::InputPeer::Empty,
+            limit: 25,
+        })))??;
+        info!(log, "spawn complete"; "dialogs" => format!("{:#?}", dialogs));
+        Ok(())
+    })
+});
+
 struct Delegate {
     log: Logger,
 }
@@ -166,4 +208,36 @@ impl Handler<client::Unhandled> for Delegate {
 
 impl Actor for Delegate {
     type Context = Context<Self>;
+}
+
+pub struct Trampoline<A, F> {
+    func: F,
+    phantom: PhantomData<fn(A)>,
+}
+
+
+impl<A, F> Trampoline<A, F>
+    where A: Actor,
+          F: FnOnce(&mut A, &mut A::Context),
+{
+    pub fn new(func: F) -> Self {
+        Self { func, phantom: PhantomData }
+    }
+}
+
+impl<A, F> Message for Trampoline<A, F>
+    where A: Actor,
+          F: FnOnce(&mut A, &mut A::Context),
+{
+    type Result = ();
+}
+
+impl<F> Handler<Trampoline<Self, F>> for TelegramManagerActor
+    where F: FnOnce(&mut Self, &mut <Self as Actor>::Context),
+{
+    type Result = ();
+
+    fn handle(&mut self, t: Trampoline<Self, F>, ctx: &mut Self::Context) {
+        (t.func)(self, ctx);
+    }
 }

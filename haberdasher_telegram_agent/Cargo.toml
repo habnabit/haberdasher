@@ -5,6 +5,8 @@ authors = ["Aaron Gallagher <_@habnab.it>"]
 edition = "2018"
 
 [dependencies]
+haberdasher_rpc = { path = "../haberdasher_rpc" }
+grpcio = "0.4.0"
 actix = "0.7.9"
 byteorder = "1.2.3"
 bytes = "0.4.8"

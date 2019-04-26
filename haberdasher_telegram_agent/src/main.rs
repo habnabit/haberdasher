@@ -1,4 +1,4 @@
-#![feature(await_macro, async_await, futures_api)]
+#![feature(await_macro, async_await, futures_api, never_type)]
 #![deny(private_in_public, unused_extern_crates)]
 
 #[macro_use(async_handler)] extern crate clacks_rpc;
@@ -9,7 +9,7 @@
 #[macro_use] extern crate tokio;
 
 use actix::prelude::*;
-use futures::Future;
+use futures::prelude::*;
 use structopt::StructOpt;
 
 mod config;
@@ -18,7 +18,7 @@ mod real_shutdown;
 pub use self::real_shutdown::RealShutdown;
 
 mod tg_manager;
-
+mod publisher;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "haberdasher_telegram_agent")]
@@ -67,6 +67,7 @@ fn main() -> Result<(), failure::Error> {
     use slog::Drain;
 
     let opts = Opt::from_args();
+    let test_mode = opts.test_mode;
     let self::config::AgentConfig { db, telegram, .. } = config::load_config_file(&opts.config)?;
     let db_config = sled::ConfigBuilder::default()
         .path(&db.path)
@@ -96,16 +97,14 @@ fn main() -> Result<(), failure::Error> {
                     |ctx| self::console::AuthCodeReader::from_context(ctx, log, lines)
                 });
                 let connect = tg_manager::Connect {
-                    phone_number,
-                    test_mode: opts.test_mode,
+                    phone_number, test_mode,
                     dc_id: None,
                     read_auth_code: Some(code_reader.recipient()),
                 };
-                let tg_manager = tg_manager.clone();
                 Arbiter::spawn_fn(move || {
                     tg_manager.send(connect)
                         .then(mailbox_lift)
-                        .and_then(move |client| {
+                        .and_then(move |(_, client)| {
                             client.send(clacks_rpc::client::CallFunction::encrypted(
                                 clacks_mtproto::mtproto::rpc::users::GetFullUser {
                                     id: clacks_mtproto::mtproto::InputUser::Self_,
@@ -114,11 +113,29 @@ fn main() -> Result<(), failure::Error> {
                         })
                         .then(move |r| {
                             info!(log, "login complete"; "result" => format!("{:#?}", r));
+                            System::current().stop();
                             Ok(())
                         })
                 })
             }
-            Command::Run {} => {}
+            Command::Run {} => {
+                let to_spawn = telegram.users.into_iter()
+                    .map(move |phone_number| {
+                        let spawned = phone_number.clone();
+                        tg_manager.send(tg_manager::SpawnClient { phone_number, test_mode })
+                            .then(mailbox_lift)
+                            .then(move |r| Ok((spawned, r)))
+                    });
+                Arbiter::spawn_fn(move || {
+                    let log_done = log.clone();
+                    futures::stream::futures_unordered(to_spawn)
+                        .for_each(move |(phone_number, r)| {
+                            info!(log, "spawn complete"; "phone_number" => phone_number, "result" => format!("{:#?}", r));
+                            Ok(())
+                        })
+                        .map(move |()| info!(log_done, "done spawning"))
+                })
+            }
         }
     });
 
