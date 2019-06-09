@@ -69,10 +69,8 @@ fn main() -> Result<(), failure::Error> {
     let opts = Opt::from_args();
     let test_mode = opts.test_mode;
     let self::config::AgentConfig { db, telegram, .. } = config::load_config_file(&opts.config)?;
-    let db_config = sled::ConfigBuilder::default()
-        .path(&db.path)
-        .build();
-    let tree = std::sync::Arc::new(sled::Tree::start(db_config)?);
+    let db = sled::Db::start_default(&db.path)?;
+    let tree = db.open_tree("legacy")?;
 
     let decorator = slog_term::TermDecorator::new().stderr().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();

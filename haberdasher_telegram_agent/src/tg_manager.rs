@@ -183,10 +183,12 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: SpawnClient, ctx) ->
         })))?;
         let dialogs = await!(client.send(client::CallFunction::encrypted(mtproto::rpc::messages::GetDialogs {
             exclude_pinned: false,
+            folder_id: None,
             offset_date: 0,
             offset_id: 0,
             offset_peer: mtproto::InputPeer::Empty,
             limit: 25,
+            hash: 0,
         })))??;
         info!(log, "spawn complete"; "dialogs" => format!("{:#?}", dialogs));
         Ok(())

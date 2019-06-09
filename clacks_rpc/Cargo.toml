@@ -27,7 +27,7 @@ version = "0.0.5"
 
 [dependencies.clacks_mtproto]
 path = "../clacks_mtproto"
-version = "0.73.0"
+version = "0.100.0"
 
 [dependencies.clacks_transport]
 path = "../clacks_transport"

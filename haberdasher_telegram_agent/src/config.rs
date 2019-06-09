@@ -131,6 +131,7 @@ impl Entry<TelegramDatacenter> {
                     port: 80,
                     static_: false,
                     tcpo_only: false,
+                    secret: None,
                 }
             ] }
         } else {
@@ -144,6 +145,7 @@ impl Entry<TelegramDatacenter> {
                     port: 443,
                     static_: false,
                     tcpo_only: false,
+                    secret: None,
                 }
             ] }
         }

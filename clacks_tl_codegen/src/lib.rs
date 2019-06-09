@@ -480,7 +480,7 @@ impl AllConstructors {
             });
         }
         for (_, cs) in constructorses {
-            let mut cs = cs.resolve(&resolve_map);
+            let cs = cs.resolve(&resolve_map);
             for &Matched(ref c, ref m) in &cs.0 {
                 ret.items.insert(
                     c.variant.owned_names_vec(),
@@ -776,7 +776,7 @@ impl TypeIR {
         TypeIR {
             wire_kind, with_option: false,
             needs_box: match names.last().map(String::as_str) {
-                // Special case two recursive types.
+                // Special case some recursive types.
                 Some("PageBlock") |
                 Some("RichText") => true,
                 _ => false,
@@ -908,11 +908,14 @@ impl TypeIR {
 
     fn field_reference_type(&self) -> Tokens {
         let ref_ = self.reference_prefix();
-        let ty = if self.is_unit() {
+        let mut ty = if self.is_unit() {
             quote!(bool)
         } else {
             self.non_field_type()
         };
+        if self.needs_box {
+            ty = quote!(Box<#ty>);
+        }
         wrap_option_type(self.with_option, quote!(#ref_ #ty))
     }
 
@@ -975,12 +978,16 @@ struct FieldIR {
 }
 
 impl Field {
-    fn resolved(&self, resolve_map: &TypeResolutionMap, replace_string_with_bytes: bool) -> FieldIR {
+    fn resolved(&self, resolve_map: &TypeResolutionMap, replace_string_with_bytes: bool, box_input_peer: bool) -> FieldIR {
         let name = self.name.clone().unwrap();
         let ty = if replace_string_with_bytes && self.ty.name() == Some("string") {
             TypeIR::bytes()
         } else {
-            self.ty.resolved(resolve_map, &name == "flags")
+            let mut ty = self.ty.resolved(resolve_map, &name == "flags");
+            if box_input_peer && self.ty.name() == Some("InputPeer") {
+                ty.needs_box = true;
+            }
+            ty
         };
         let flag_bit = self.ty.flag_field().map(|(_, b)| b);
         FieldIR { ty, name, flag_bit }
@@ -1056,7 +1063,7 @@ impl Constructor<Type, Field> {
             fields: self.resolved_fields(resolve_map),
             output: self.resolved_output(which, resolve_map),
             type_parameters: self.type_parameters.iter()
-                .map(|t| t.resolved(resolve_map, false))
+                .map(|t| t.resolved(resolve_map, false, false))
                 .collect(),
             tl_id: self.tl_id,
             original_variant: self.original_variant,
@@ -1101,8 +1108,15 @@ impl Constructor<Type, Field> {
             _ => false,
         };
 
+        let box_input_peer = match self.original_variant.as_str() {
+            // types
+            "inputPeerChannelFromMessage" |
+            "inputPeerUserFromMessage" => true,
+            _ => false,
+        };
+
         let mut ret: Vec<_> = self.fields.iter()
-            .map(|f| f.resolved(resolve_map, replace_string_with_bytes))
+            .map(|f| f.resolved(resolve_map, replace_string_with_bytes, box_input_peer))
             .collect();
         if &self.original_variant == "manual.gzip_packed" {
             ret.push(FieldIR::extra_default(

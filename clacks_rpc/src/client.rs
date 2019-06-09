@@ -2,7 +2,7 @@ use actix::{self, Actor, AsyncContext, Context, StreamHandler};
 use actix::prelude::*;
 use chrono::Duration;
 use clacks_crypto::symm::AuthKey;
-use clacks_mtproto::{AnyBoxedSerialize, BoxedDeserialize, ConstructorNumber, mtproto};
+use clacks_mtproto::{AnyBoxedSerialize, BoxedDeserialize, ConstructorNumber, IntoBoxed, mtproto};
 use clacks_transport::{AppId, Session, TelegramCodec, session};
 use failure::Error;
 use futures::{self, IntoFuture};
@@ -358,6 +358,7 @@ async_handler!(fn handle()(this: RpcClientActor, req: InitConnection, ctx) -> mt
             lang_code: unwrap_cow_option(&req.lang_code, "en"),
             system_lang_code: unwrap_cow_option(&req.system_lang_code, "en"),
             lang_pack: unwrap_cow_option(&req.lang_pack, ""),
+            proxy: None,
             query: mtproto::rpc::help::GetConfig,
         },
     };
@@ -458,11 +459,15 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
     let SendAuthCode { phone_number } = req;
     let app_id = this.session.app_id();
     let send_code = mtproto::rpc::auth::SendCode {
-        allow_flashcall: false,
         api_hash: app_id.api_hash.clone(),
         api_id: app_id.api_id,
-        current_number: None,
         phone_number: phone_number.clone(),
+        settings: mtproto::code_settings::CodeSettings {
+            allow_flashcall: false,
+            current_number: false,
+            app_hash_persistent: false,
+            app_hash: None,
+        }.into_boxed(),
     };
     let addr = ctx.address();
     Ok(async move {
