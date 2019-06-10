@@ -23,7 +23,7 @@ where
     rx: Option<oneshot::Receiver<M::Result>>,
     info: Option<(AddressSender<A>, M)>,
     timeout: Option<Delay>,
-    act: PhantomData<A>,
+    act: PhantomData<fn() -> A>,
 }
 
 impl<A, M> Request<A, M>
