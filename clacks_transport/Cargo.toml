@@ -7,23 +7,23 @@ description = "telegram's TCP transport encoding"
 edition = "2018"
 
 [dependencies]
-byteorder = "1.2.3"
-bytes = "0.4.8"
-chrono = "0.4.3"
-either = "1.5.0"
-failure = "0.1.1"
-rand = "0.4.2"
-serde = "1.0.82"
-serde_derive = "1.0.82"
-slog = "2.2.3"
-tokio-codec = "0.1.0"
+byteorder = "1.3.1"
+bytes = "0.4.12"
+chrono = "0.4.6"
+either = "1.5.2"
+failure = "0.1.5"
+rand = "0.6.5"
+serde = "1.0.92"
+serde_derive = "1.0.92"
+slog = "2.4.1"
+tokio-codec = "0.1.1"
 
 [dependencies.serde_json]
-version = "1.0.21"
+version = "1.0.39"
 optional = true
 
 [dependencies.slog-scope]
-version = "4.0.1"
+version = "4.1.1"
 optional = true
 
 [dependencies.clacks_mtproto]

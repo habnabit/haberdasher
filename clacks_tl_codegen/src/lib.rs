@@ -1699,7 +1699,7 @@ impl Constructors<TypeIR, FieldIR> {
         }
     }
 
-    fn constructors_and_tl_ids<'this>(&'this self) -> Box<'this + Iterator<Item = (Tokens, &'this Constructor<TypeIR, FieldIR>)>> {
+    fn constructors_and_tl_ids<'this>(&'this self) -> Box<dyn 'this + Iterator<Item = (Tokens, &'this Constructor<TypeIR, FieldIR>)>> {
         Box::new(self.0.iter().filter_map(|cm| {
             cm.0.tl_id().map(|id| (id, &cm.0))
         }))

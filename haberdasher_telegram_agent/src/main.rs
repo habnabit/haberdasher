@@ -1,4 +1,4 @@
-#![feature(await_macro, async_await, futures_api, never_type)]
+#![feature(async_await, futures_api, never_type)]
 #![deny(private_in_public, unused_extern_crates)]
 
 #[macro_use(async_handler)] extern crate clacks_rpc;

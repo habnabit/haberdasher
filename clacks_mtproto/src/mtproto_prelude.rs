@@ -3,7 +3,8 @@
 use ::{AnyBoxedSerialize, BareDeserialize, BareSerialize, BoxedDeserialize, BoxedSerialize, ConstructorNumber, Deserializer, DynamicDeserializer, Result, Serializer};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use extfmt::Hexlify;
-use rand::{Rand, Rng};
+use rand::Rng;
+use rand::distributions::{Distribution, Standard};
 use serde;
 use std::fmt;
 use std::io::{Read, Write};
@@ -41,9 +42,9 @@ macro_rules! impl_byteslike {
 
         impl_byteslike!(@common $ty);
 
-        impl Rand for $ty {
-            fn rand<R: Rng>(rng: &mut R) -> Self {
-                let mut ret: Self = Default::default();
+        impl Distribution<$ty> for Standard {
+            fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> $ty {
+                let mut ret: $ty = Default::default();
                 rng.fill_bytes(&mut ret.0);
                 ret
             }
@@ -268,7 +269,6 @@ impl BoxedDeserialize for TransparentGunzip {
 
     fn deserialize_boxed(id: ConstructorNumber, de: &mut Deserializer) -> Result<Self> {
         use flate2::bufread::GzDecoder;
-        use std::io::Read;
 
         let original = GzipPacked::deserialize_boxed(id, de)?;
         let inner = {

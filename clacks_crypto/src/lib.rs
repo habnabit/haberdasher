@@ -10,6 +10,8 @@ extern crate rand;
 pub mod asymm;
 pub mod symm;
 
+use rand::distributions::{Distribution, Standard};
+
 
 pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
 
@@ -51,7 +53,7 @@ fn sha1_and_or_pad(input: &[u8], prepend_sha1: bool, padding: Padding) -> Result
 
 pub struct CSRNG;
 
-impl rand::Rng for CSRNG {
+impl rand::RngCore for CSRNG {
     fn next_u32(&mut self) -> u32 {
         let mut buf = [0u8; 4];
         self.fill_bytes(&mut buf);
@@ -67,6 +69,15 @@ impl rand::Rng for CSRNG {
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         ::openssl::rand::rand_bytes(dest).unwrap();
     }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> std::result::Result<(), rand::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
 }
 
-pub fn csrng_gen<R: rand::Rand>() -> R { rand::Rand::rand(&mut CSRNG) }
+pub fn csrng_gen<R>() -> R
+where Standard: Distribution<R>
+{
+    rand::Rng::gen(&mut CSRNG)
+}

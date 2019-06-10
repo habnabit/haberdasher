@@ -5,31 +5,32 @@ use clacks_crypto::symm::AuthKey;
 use clacks_mtproto::{AnyBoxedSerialize, BoxedDeserialize, ConstructorNumber, IntoBoxed, mtproto};
 use clacks_transport::{AppId, Session, TelegramCodec, session};
 use failure::Error;
-use futures::{self, IntoFuture};
-use futures::sync::oneshot;
+use futures::Future;
+use futures::channel::oneshot;
+use futures::compat::*;
+use futures::prelude::*;
 use slog::Logger;
 use std::io;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
-use super::Result;
+use crate::Result;
 
 #[macro_export]
 macro_rules! async_handler {
     (fn handle ($($generics:tt)*) ($this:ident: $actor_ty:ty, $input:ident: $input_ty:ty, $ctx:ident) -> $output_ty:ty $output:block) => {
         impl <$($generics)*> Handler<$input_ty> for $actor_ty {
-            type Result = Box<dyn futures::Future<Item = $output_ty, Error = failure::Error>>;
+            type Result = futures::compat::Compat<std::pin::Pin<Box<dyn future::Future<Output=Result<$output_ty>>>>>;
 
             fn handle(&mut self, $input: $input_ty, $ctx: &mut Self::Context) -> Self::Result {
-                let fut = match (move || {
+                match (move || {
                     let $this = self;
                     $output
                 })() {
-                    Ok(f) => tokio_async_await::compat::backward::Compat::new(f),
-                    Err(e) => return Box::new(futures::future::err(e)),
-                };
-                Box::new(fut)
+                    Ok(f) => futures::compat::Compat::new(f.boxed() as std::pin::Pin<Box<dyn future::Future<Output=Result<$output_ty>>>>),
+                    Err(e) => unimplemented!(),
+                }
             }
         }
     };
@@ -165,7 +166,7 @@ async_handler!(fn handle()(this: RpcClientActor, message: SendMessage, _ctx) -> 
     }
     let serialized = this.session.serialize_message(message)?;
     tg_tx.write(serialized);
-    Ok(async { Ok(await!(rx)??) })
+    Ok(async { Ok(rx.await??) })
 });
 
 pub struct CallFunction<R> {
@@ -203,7 +204,7 @@ async_handler!(fn handle(R: BoxedDeserialize + AnyBoxedSerialize)(this: RpcClien
     let log = this.log.clone();
     let fut = <RpcClientActor as Handler<SendMessage>>::handle(this, message.inner, ctx);
     Ok(async move {
-        let reply: mtproto::TLObject = await!(fut)?;
+        let reply: mtproto::TLObject = fut.compat().await?;
         match reply.downcast::<R>() {
             Ok(r) => Ok(r),
             Err(e) => {
@@ -236,7 +237,7 @@ async_handler!(fn handle()(this: RpcClientActor, bind: BindAuthKey, ctx) -> () {
         _dummy: PhantomData,
     });
     Ok(async {
-        let bound: bool = await!(reply_fut)??.into();
+        let bound: bool = reply_fut.compat().await??.into();
         ensure!(bound, format_err!("confusing Ok(false) from bind_auth_key"));
         Ok(())
     })
@@ -364,7 +365,7 @@ async_handler!(fn handle()(this: RpcClientActor, req: InitConnection, ctx) -> mt
     };
     let addr = ctx.address();
     Ok(async move {
-        let res = await!(addr.send(CallFunction::encrypted(call)))??;
+        let res = addr.send(CallFunction::encrypted(call)).compat().await??;
         Ok(res)
     })
 });
@@ -471,7 +472,7 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
     };
     let addr = ctx.address();
     Ok(async move {
-        let mut sent = match await!(addr.send(CallFunction::encrypted(send_code)))? {
+        let mut sent = match addr.send(CallFunction::encrypted(send_code)).compat().await? {
             Ok(mtproto::auth::SentCode::SentCode(sent)) => sent,
             Err(e) => {
                 let e = e.downcast::<UpstreamRpcError>()?;
@@ -488,17 +489,17 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
         let mut last_error = None;
         loop {
             use self::AuthCodeReply::*;
-            match await!(addr.send(SendToDelegate(ReadAuthCode {
+            match addr.send(SendToDelegate(ReadAuthCode {
                 phone_number: phone_number.clone(),
                 type_: sent.type_.clone(),
                 last_error: last_error.take(),
-            })))?? {
+            })).compat().await?? {
                 Code(phone_code) => {
-                    match await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::SignIn {
+                    match addr.send(CallFunction::encrypted(mtproto::rpc::auth::SignIn {
                         phone_code,
                         phone_number: phone_number.clone(),
                         phone_code_hash: sent.phone_code_hash.clone(),
-                    })))? {
+                    })).compat().await? {
                         Ok(auth) => return Ok(auth),
                         Err(e) => {
                             last_error = Some(e.downcast::<UpstreamRpcError>()?.0.only());
@@ -506,17 +507,17 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
                     }
                 }
                 Resend => {
-                    let reply = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
+                    let reply = addr.send(CallFunction::encrypted(mtproto::rpc::auth::ResendCode {
                         phone_number: phone_number.clone(),
                         phone_code_hash: sent.phone_code_hash.clone(),
-                    })))??.only();
+                    })).compat().await??.only();
                     sent = reply;
                 }
                 Cancel => {
-                    let canceled = await!(addr.send(CallFunction::encrypted(mtproto::rpc::auth::CancelCode {
+                    let canceled = addr.send(CallFunction::encrypted(mtproto::rpc::auth::CancelCode {
                         phone_number: phone_number.clone(),
                         phone_code_hash: sent.phone_code_hash.clone(),
-                    })))??;
+                    })).compat().await??;
                     Err(AuthError::Canceled(canceled.into()))?;
                 }
             }
