@@ -21,14 +21,14 @@ use crate::Result;
 macro_rules! async_handler {
     (fn handle ($($generics:tt)*) ($this:ident: $actor_ty:ty, $input:ident: $input_ty:ty, $ctx:ident) -> $output_ty:ty $output:block) => {
         impl <$($generics)*> Handler<$input_ty> for $actor_ty {
-            type Result = futures::compat::Compat<std::pin::Pin<Box<dyn future::Future<Output=Result<$output_ty>>>>>;
+            type Result = futures::compat::Compat<std::pin::Pin<Box<dyn Future<Output=Result<$output_ty>>>>>;
 
             fn handle(&mut self, $input: $input_ty, $ctx: &mut Self::Context) -> Self::Result {
                 match (move || {
                     let $this = self;
                     $output
                 })() {
-                    Ok(f) => futures::compat::Compat::new(f.boxed() as std::pin::Pin<Box<dyn future::Future<Output=Result<$output_ty>>>>),
+                    Ok(f) => futures::compat::Compat::new(f.boxed() as std::pin::Pin<Box<dyn Future<Output=Result<$output_ty>>>>),
                     Err(e) => unimplemented!(),
                 }
             }
@@ -41,7 +41,7 @@ type Responder = oneshot::Sender<Result<mtproto::TLObject>>;
 pub struct RpcClientActor {
     log: Logger,
     session: Session,
-    tg_tx: Option<actix::io::FramedWrite<Box<tokio_io::AsyncWrite>, TelegramCodec>>,
+    tg_tx: Option<actix::io::FramedWrite<Box<dyn tokio_io::AsyncWrite>, TelegramCodec>>,
     delegates: EventDelegates,
     pending_rpcs: BTreeMap<i64, (ConstructorNumber, Responder)>,
 }
@@ -67,7 +67,7 @@ impl RpcClientActor {
         let session = Session::new(log.new(o!("subsystem" => "session")), app_id);
         let (tg_rx, tg_tx) = stream.split();
         ctx.add_stream(tokio_codec::FramedRead::new(tg_rx, TelegramCodec::new()));
-        let tg_tx: Box<tokio_io::AsyncWrite> = Box::new(tg_tx);
+        let tg_tx: Box<dyn tokio_io::AsyncWrite> = Box::new(tg_tx);
         let tg_tx = actix::io::FramedWrite::new(tg_tx, TelegramCodec::new(), ctx);
         RpcClientActor {
             log, session,
