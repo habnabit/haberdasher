@@ -22,9 +22,6 @@ codecov = { repository = "actix/actix", branch = "master", service = "github" }
 name = "actix"
 path = "src/lib.rs"
 
-[workspace]
-members = ["examples/chat"]
-
 [features]
 default = ["resolver", "http"]
 
