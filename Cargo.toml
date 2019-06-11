@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "actix",
+    "actix-async-await",
     "clacks_crypto",
     "clacks_mtproto",
     "clacks_rpc",
