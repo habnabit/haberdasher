@@ -3,7 +3,6 @@ use std::future::Future;
 use ::actix::dev::{MessageResponse, ResponseChannel};
 use ::actix::prelude::*;
 use futures_core::future::LocalFutureObj;
-use futures_util::future::FutureExt;
 
 use crate::prelude::*;
 
@@ -18,7 +17,7 @@ where
 {
     fn from(fut: F) -> Self {
         ResponseStdFuture {
-            inner: LocalFutureObj::new(fut.boxed()),
+            inner: LocalFutureObj::new(Box::pin(fut)),
         }
     }
 }
@@ -33,13 +32,22 @@ where
 {
     fn handle<R: ResponseChannel<M>>(self, _: &mut A::Context, tx: Option<R>) {
         let fut = async move {
-            let res = await!(self.inner);
+            let res = self.inner.await;
             if let Some(tx) = tx {
                 tx.send(res);
             }
         };
-        Arbiter::spawn_async(fut.boxed())
+        Arbiter::spawn_async(Box::pin(fut))
     }
+}
+
+impl<T> std::ops::Deref for ResponseStdFuture<T> {
+    type Target = LocalFutureObj<'static, T>;
+    fn deref(&self) -> &Self::Target { &self.inner }
+}
+
+impl<T> std::ops::DerefMut for ResponseStdFuture<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.inner }
 }
 
 #[cfg(test)]
