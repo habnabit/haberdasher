@@ -2,14 +2,15 @@
 use actix::prelude::*;
 use clacks_mtproto::mtproto;
 use clacks_rpc::client::{self, RpcClientActor};
+use futures::compat::*;
+use futures::prelude::*;
 use slog::Logger;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::config::{Entry, TelegramDatacenter, TelegramServersV1, UserAuthKey, UserAuthKeyV1, UserData, UserDataV1};
-
-type Result<T> = std::result::Result<T, failure::Error>;
+use crate::config::{Entry, TelegramDatacenter, TelegramServersV1, UserAuthKey, UserAuthKeyV1, UserData, UserDataV1};
+use crate::{FullTokioSpawn, Result};
 
 #[derive(Debug, Clone, Fail)]
 #[fail(display = "")]
@@ -24,15 +25,16 @@ pub struct UserDc {
 
 pub struct TelegramManagerActor {
     log: Logger,
+    spawn: FullTokioSpawn,
     tree: Arc<sled::Tree>,
     app_id: clacks_transport::AppId,
     connections: BTreeMap<UserDc, Addr<RpcClientActor>>,
 }
 
 impl TelegramManagerActor {
-    pub fn new(log: Logger, tree: Arc<sled::Tree>, app_id: clacks_transport::AppId) -> Self {
+    pub fn new(log: Logger, spawn: FullTokioSpawn, tree: Arc<sled::Tree>, app_id: clacks_transport::AppId) -> Self {
         TelegramManagerActor {
-            log, tree, app_id,
+            log, spawn, tree, app_id,
             connections: BTreeMap::new(),
         }
     }
@@ -69,15 +71,25 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> (Us
     let servers = this.servers_for(&req)?;
     let manager = ctx.address();
     let log = this.log.new(o!());
+    let spawn = this.spawn.clone();
     let tree = this.tree.clone();
     let app_id = this.app_id.clone();
     Ok(async move {
         let client = {
-            let server_addr = servers.iter_addresses()
+            let mut addr_futures = servers.iter_addresses()
+                .map(|addr| tokio::net::TcpStream::connect(&addr).compat())
+                .collect::<stream::FuturesUnordered<_>>()
+                .filter_map(|r| match r {
+                    Ok(s) => future::ready(Some(s)),
+                    Err(e) => {
+                        info!(log, "ignored failure to connect"; "error" => ?e);
+                        future::ready(None)
+                    },
+                });
+            let connection = addr_futures
                 .next()
+                .await
                 .ok_or(NoServers)?;
-            let connection_fut = tokio::net::TcpStream::connect(&server_addr);
-            let connection: super::RealShutdown<tokio::net::TcpStream> = await!(connection_fut)?.into();
             RpcClientActor::create({
                 let log = log.clone();
                 let app_id = app_id.clone();
@@ -87,36 +99,36 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> (Us
         let delegate = Delegate {
             log: log.new(o!("subsystem" => "delegate")),
         }.start();
-        await!(client.send(client::SetDelegates {
+        client.send(client::SetDelegates {
             delegates: client::EventDelegates {
                 unhandled: Some(delegate.recipient()),
                 read_auth_code: req.read_auth_code.clone(),
             },
-        }))?;
+        }).compat().await?;
         let user_auth = Entry::new(
             UserAuthKey { phone_number: req.phone_number.to_owned().into() });
         let to_persist = match user_auth.get(&tree)? {
             Some(key) => {
                 let perm_key = clacks_crypto::symm::AuthKey::new(&key.auth_key)?;
-                await!(clacks_rpc::kex::adopt_auth_key(
-                    client.clone(), futures_cpupool::CpuPool::new(1), chrono::Duration::hours(24),
-                    perm_key))?;
+                clacks_rpc::kex::adopt_auth_key(
+                    client.clone(), spawn, chrono::Duration::hours(24),
+                    perm_key).await?;
                 None
             }
             None => {
-                let perm_key = await!(clacks_rpc::kex::new_auth_key(
-                    client.clone(), futures_cpupool::CpuPool::new(1), chrono::Duration::hours(24)))?;
+                let perm_key = clacks_rpc::kex::new_auth_key(
+                    client.clone(), spawn, chrono::Duration::hours(24)).await?;
                 Some(perm_key)
             }
         };
-        let config = await!(client.send(<client::InitConnection as Default>::default()))??.only();
+        let config = client.send(<client::InitConnection as Default>::default()).compat().await??.only();
         let native_dc = config.this_dc as u32;
         save_config(config, &tree)?;
         info!(log, "config saved");
         if let Some(perm_key) = to_persist {
-            let authed_user = match await!(client.send(client::SendAuthCode {
+            let authed_user = match client.send(client::SendAuthCode {
                 phone_number: req.phone_number.clone(),
-            }))? {
+            }).compat().await? {
                 Ok(mtproto::auth::Authorization::Authorization(mtproto::auth::authorization::Authorization {
                     user: mtproto::User::User(user), ..
                 })) => user,
@@ -128,7 +140,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> (Us
                         bail!("attempted double-redirect from {} to {}", prev_dc_id, dc_id);
                     }
                     let req = Connect { dc_id: Some(dc_id), ..req };
-                    return Ok(await!(manager.send(req))??);
+                    return Ok(manager.send(req).compat().await??);
                 },
             };
             Entry::new(user_auth.as_user_data()).set(&tree, &UserDataV1 { native_dc, authed_user })?;
@@ -176,12 +188,12 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: SpawnClient, ctx) ->
     let log = this.log.clone();
     let manager = ctx.address();
     Ok(async move {
-        let (user_dc, client) = await!(manager.send(connect))??;
+        let (user_dc, client) = manager.send(connect).compat().await??;
         let saved_client = client.clone();
-        await!(manager.send(Trampoline::new(move |this: &mut Self, _ctx| {
+        manager.send(Trampoline::new(move |this: &mut Self, _ctx| {
             this.connections.insert(user_dc, saved_client);
-        })))?;
-        let dialogs = await!(client.send(client::CallFunction::encrypted(mtproto::rpc::messages::GetDialogs {
+        })).compat().await?;
+        let dialogs = client.send(client::CallFunction::encrypted(mtproto::rpc::messages::GetDialogs {
             exclude_pinned: false,
             folder_id: None,
             offset_date: 0,
@@ -189,7 +201,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: SpawnClient, ctx) ->
             offset_peer: mtproto::InputPeer::Empty,
             limit: 25,
             hash: 0,
-        })))??;
+        })).compat().await??;
         info!(log, "spawn complete"; "dialogs" => format!("{:#?}", dialogs));
         Ok(())
     })

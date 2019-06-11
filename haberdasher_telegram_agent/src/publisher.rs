@@ -1,12 +1,14 @@
-use failure::Error;
+use actix_async_await::AsyncContextExt;
+use futures::prelude::*;
 use haberdasher_rpc::haberdasher as protos;
 use haberdasher_rpc::haberdasher_grpc as rpc;
 use serde::Deserialize;
 use tokio::prelude::*;
 use actix::prelude::*;
 use clacks_rpc::client;
-use futures::unsync;
 use slog::Logger;
+
+use crate::Result;
 
 struct PublishStarter {
     log: Logger,
@@ -15,11 +17,11 @@ struct PublishStarter {
 }
 
 impl PublishStarter {
-    pub fn from_context(ctx: &mut Context<Self>, log: Logger, access_token: String, venues: impl futures::Stream<Item = protos::Venue, Error = ()> + 'static) -> Self {
+    pub fn from_context(ctx: &mut Context<Self>, log: Logger, access_token: String, venues: impl futures::Stream<Item = protos::Venue> + Unpin + 'static) -> Self {
         let env = std::sync::Arc::new(grpcio::EnvBuilder::new().build());
         let channel = grpcio::ChannelBuilder::new(env)
             .connect("127.0.0.1:42253");
-        ctx.add_stream(venues);
+        //ctx.add_stream_03(venues.map(Ok));
         Self { log, channel, access_token }
     }
 
@@ -67,22 +69,22 @@ struct PublishDriver {
 }
 
 impl PublishDriver {
-    fn new(access_token: String, venues: impl futures::Stream<Item = protos::Venue, Error = !> + 'static) -> Result<(), failure::Error> {
-        let env = std::sync::Arc::new(grpcio::EnvBuilder::new().build());
-        let channel = grpcio::ChannelBuilder::new(env)
-            .connect("127.0.0.1:42253");
-        let mut builder = grpcio::MetadataBuilder::new();
-        builder.add_str("access-token", &access_token)?;
-        let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
-        let call_opts = <grpcio::CallOption as Default>::default()
-            .headers(builder.build());
-        let (venue_tx, empty_rx) = agent_client.publish_venue_updates_opt(call_opts)?;
-        let stream_done = venues
-            .then(|r| match r {
-                Ok(v) => Ok::<_, failure::Error>((v, Default::default())),
-                Err(_) => unreachable!(),
-            })
-            .forward(venue_tx.sink_from_err::<failure::Error>());
+    fn new(access_token: String, venues: impl futures::Stream<Item = protos::Venue> + 'static) -> Result<()> {
+        // let env = std::sync::Arc::new(grpcio::EnvBuilder::new().build());
+        // let channel = grpcio::ChannelBuilder::new(env)
+        //     .connect("127.0.0.1:42253");
+        // let mut builder = grpcio::MetadataBuilder::new();
+        // builder.add_str("access-token", &access_token)?;
+        // let agent_client = rpc::AgentSubscriberClient::new(channel.clone());
+        // let call_opts = <grpcio::CallOption as Default>::default()
+        //     .headers(builder.build());
+        // let (venue_tx, empty_rx) = agent_client.publish_venue_updates_opt(call_opts)?;
+        // let stream_done = venues
+        //     .then(|r| match r {
+        //         Ok(v) => Ok::<_, failure::Error>((v, Default::default())),
+        //         Err(_) => unreachable!(),
+        //     })
+        //     .forward(venue_tx.sink_from_err::<failure::Error>());
         Ok(())
     }
 }

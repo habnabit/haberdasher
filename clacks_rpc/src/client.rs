@@ -5,10 +5,8 @@ use clacks_crypto::symm::AuthKey;
 use clacks_mtproto::{AnyBoxedSerialize, BoxedDeserialize, ConstructorNumber, IntoBoxed, mtproto};
 use clacks_transport::{AppId, Session, TelegramCodec, session};
 use failure::Error;
-use futures::Future;
 use futures::channel::oneshot;
 use futures::compat::*;
-use futures::prelude::*;
 use slog::Logger;
 use std::io;
 use std::borrow::Cow;
@@ -21,15 +19,15 @@ use crate::Result;
 macro_rules! async_handler {
     (fn handle ($($generics:tt)*) ($this:ident: $actor_ty:ty, $input:ident: $input_ty:ty, $ctx:ident) -> $output_ty:ty $output:block) => {
         impl <$($generics)*> Handler<$input_ty> for $actor_ty {
-            type Result = futures::compat::Compat<std::pin::Pin<Box<dyn Future<Output=Result<$output_ty>>>>>;
+            type Result = actix_async_await::ResponseStdFuture<Result<$output_ty>>;
 
             fn handle(&mut self, $input: $input_ty, $ctx: &mut Self::Context) -> Self::Result {
                 match (move || {
                     let $this = self;
                     $output
                 })() {
-                    Ok(f) => futures::compat::Compat::new(f.boxed() as std::pin::Pin<Box<dyn Future<Output=Result<$output_ty>>>>),
-                    Err(e) => unimplemented!(),
+                    Ok(f) => From::from(f),
+                    Err(e) => From::from(async move { Err(e) }),
                 }
             }
         }
@@ -202,9 +200,9 @@ impl<R: 'static> Message for CallFunction<R> {
 
 async_handler!(fn handle(R: BoxedDeserialize + AnyBoxedSerialize)(this: RpcClientActor, message: CallFunction<R>, ctx) -> R {
     let log = this.log.clone();
-    let fut = <RpcClientActor as Handler<SendMessage>>::handle(this, message.inner, ctx);
+    let mut fut = <RpcClientActor as Handler<SendMessage>>::handle(this, message.inner, ctx);
     Ok(async move {
-        let reply: mtproto::TLObject = fut.compat().await?;
+        let reply: mtproto::TLObject = (&mut *fut).await?;
         match reply.downcast::<R>() {
             Ok(r) => Ok(r),
             Err(e) => {
@@ -421,21 +419,15 @@ impl Message for SendToDelegate<ReadAuthCode> {
     type Result = Result<AuthCodeReply>;
 }
 
-impl Handler<SendToDelegate<ReadAuthCode>> for RpcClientActor {
-    type Result = ResponseActFuture<Self, AuthCodeReply, failure::Error>;
-
-    fn handle(&mut self, to_send: SendToDelegate<ReadAuthCode>, _: &mut Self::Context) -> Self::Result {
-        match &self.delegates.read_auth_code {
-            Some(addr) => Box::new({
-                actix::fut::wrap_future(addr.send(to_send.0))
-                    .then(|rr, _, _| actix::fut::wrap_future(rr.unwrap_or_else(|e| Err(e)?).into_future()))
-            }),
-            None => Box::new({
-                actix::fut::wrap_future(Err(format_err!("no delegate")).into_future())
-            }),
-        }
-    }
-}
+async_handler!(fn handle()(this: RpcClientActor, to_send: SendToDelegate<ReadAuthCode>, _ctx) -> AuthCodeReply {
+    let fut = match &this.delegates.read_auth_code {
+        Some(addr) => addr.send(to_send.0),
+        None => Err(format_err!("no delegate"))?,
+    };
+    Ok(async move {
+        Ok(fut.compat().await??)
+    })
+});
 
 #[derive(Debug, Clone)]
 pub struct SendAuthCode {
@@ -481,7 +473,7 @@ async_handler!(fn handle()(this: RpcClientActor, req: SendAuthCode, ctx) -> mtpr
                     .and_then(|s| s.chars().next_back())
                     .and_then(|c| c.to_digit(10));
                 match dc_opt {
-                    Some(dc)  => Err(AuthRedirectTo(dc))?,
+                    Some(dc) => Err(AuthRedirectTo(dc))?,
                     _ => Err(e)?,
                 }
             },
