@@ -10,36 +10,28 @@ use futures::compat::*;
 
 use crate::{Result, client};
 
-#[derive(Fail, Debug)]
-#[fail(display = "failed to spawn PQ decomposition: {:?}", _0)]
-struct PQFailed(futures::task::SpawnError);
-
 fn u32_bytes(n: u32) -> mtproto::bytes {
     let mut ret = vec![0u8; 4];
     BigEndian::write_u32(&mut ret, n);
     ret.into()
 }
 
-pub async fn kex<S>(addr: Addr<client::RpcClientActor>, mut pq_spawner: S, expires_in: Option<Duration>)
+pub async fn kex(addr: Addr<client::RpcClientActor>, expires_in: Option<Duration>)
              -> Result<(AuthKey, mtproto::FutureSalt)>
-    where S: futures::task::Spawn,
 {
     let nonce = csrng_gen();
     let pq = addr.send(client::CallFunction::plain(mtproto::rpc::ReqPq { nonce })).compat().await??.only();
     assert_eq!(nonce, pq.nonce);
     let server_nonce = pq.server_nonce;
     let (pq_tx, pq_rx) = oneshot::channel::<Result<(mtproto::bytes, mtproto::bytes)>>();
-    match pq_spawner.spawn_obj(Box::pin({
+    rayon::spawn({
         let pq_int = BigEndian::read_u64(&pq.pq);
-        async move {
+        move || {
             let pq = clacks_crypto::asymm::decompose_pq(pq_int)
                 .map(|(p, q)| (u32_bytes(p), u32_bytes(q)));
             let _ = pq_tx.send(pq);
         }
-    }).into()) {
-        Ok(()) => (),
-        Err(e) => Err(PQFailed(e))?,
-    };
+    });
     let (pubkey, public_key_fingerprint) = clacks_crypto::asymm::find_first_key(&pq.server_public_key_fingerprints)?;
     let new_nonce = csrng_gen();
     let (p, q) = pq_rx.await??;
@@ -106,11 +98,10 @@ pub async fn kex<S>(addr: Addr<client::RpcClientActor>, mut pq_spawner: S, expir
     Ok((auth_key, salt))
 }
 
-pub async fn new_auth_key<S>(addr: Addr<client::RpcClientActor>, pg_spawner: S, temp_key_duration: Duration) -> Result<AuthKey>
-    where S: futures::task::Spawn + Clone,
+pub async fn new_auth_key(addr: Addr<client::RpcClientActor>, temp_key_duration: Duration) -> Result<AuthKey>
 {
-    let (temp_key, salt) = kex(addr.clone(), pg_spawner.clone(), Some(temp_key_duration)).await?;
-    let (perm_key, _) = kex(addr.clone(), pg_spawner, None).await?;
+    let (temp_key, salt) = kex(addr.clone(), Some(temp_key_duration)).await?;
+    let (perm_key, _) = kex(addr.clone(), None).await?;
     addr.send(client::BindAuthKey {
         temp_key, temp_key_duration, salt,
         perm_key: perm_key.clone(),
@@ -118,10 +109,9 @@ pub async fn new_auth_key<S>(addr: Addr<client::RpcClientActor>, pg_spawner: S, 
     Ok(perm_key)
 }
 
-pub async fn adopt_auth_key<S>(addr: Addr<client::RpcClientActor>, pg_spawner: S, temp_key_duration: Duration, perm_key: AuthKey) -> Result<()>
-    where S: futures::task::Spawn,
+pub async fn adopt_auth_key(addr: Addr<client::RpcClientActor>, temp_key_duration: Duration, perm_key: AuthKey) -> Result<()>
 {
-    let (temp_key, salt) = kex(addr.clone(), pg_spawner, Some(temp_key_duration)).await?;
+    let (temp_key, salt) = kex(addr.clone(), Some(temp_key_duration)).await?;
     addr.send(client::BindAuthKey {
         temp_key, temp_key_duration, salt, perm_key,
     }).compat().await??;

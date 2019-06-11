@@ -111,13 +111,13 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> (Us
             Some(key) => {
                 let perm_key = clacks_crypto::symm::AuthKey::new(&key.auth_key)?;
                 clacks_rpc::kex::adopt_auth_key(
-                    client.clone(), spawn, chrono::Duration::hours(24),
+                    client.clone(), chrono::Duration::hours(24),
                     perm_key).await?;
                 None
             }
             None => {
                 let perm_key = clacks_rpc::kex::new_auth_key(
-                    client.clone(), spawn, chrono::Duration::hours(24)).await?;
+                    client.clone(), chrono::Duration::hours(24)).await?;
                 Some(perm_key)
             }
         };
