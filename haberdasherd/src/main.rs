@@ -1,10 +1,3 @@
-extern crate futures;
-extern crate grpcio;
-extern crate tokio;
-extern crate toml;
-extern crate haberdasher_rpc;
-extern crate owning_ref;
-
 use std::collections::HashMap;
 use haberdasher_rpc::haberdasher as protos;
 use haberdasher_rpc::haberdasher_grpc as rpc;
@@ -83,14 +76,16 @@ impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl 
             println!("allowed incoming venue updates from {:?} ({:?})", peer, agent);
             let segment = {
                 let agent_name = agent.name.as_ref().map(String::as_str).unwrap_or("<bogus>").to_owned();
-                let mut segment = protos::Origin_Segment::new();
-                segment.set_agent(agent_name);
+                let mut segment = <protos::origin::Segment as Default>::default();
+                segment.agent = agent_name;
                 segment
             };
             Box::new({
                 stream
                     .map(move |mut v| {
-                        v.mut_origin().mut_path().insert(0, segment.clone());
+                        let mut origin = v.origin.unwrap_or_default();
+                        origin.path.insert(0, segment.clone());
+                        v.origin = Some(origin);
                         v
                     })
                     .for_each(|v| {
@@ -98,7 +93,7 @@ impl haberdasher_rpc::haberdasher_grpc::AgentSubscriber for AgentSubscriberImpl 
                         Ok(())
                     })
                     .then(move |r| {
-                        sink.success(protos::Empty::new())
+                        sink.success(protos::Empty {})
                             .and_then(move |()| r)
                     })
                     .map_err(|e| e.into())

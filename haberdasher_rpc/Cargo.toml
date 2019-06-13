@@ -5,9 +5,16 @@ authors = ["Aaron Gallagher <_@habnab.it>"]
 edition = "2018"
 
 [dependencies]
+bytes = "0.4.12"
 futures = "0.1.27"
-protobuf = "2.6.2"
+prost-types = "0.5.0"
+prost = "0.5.0"
 
 [dependencies.grpcio]
-version = "0.4.4"
-features = ["openssl"]
+path = "../grpc-rs"
+version = "0.5.0-alpha.1"
+default-features = false
+features = ["prost-codec", "openssl-vendored"]
+
+[build-dependencies]
+prost-build = "0.5.0"

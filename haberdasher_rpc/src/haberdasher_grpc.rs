@@ -21,17 +21,18 @@
 const METHOD_AGENT_SUBSCRIBER_HANDLE_AGENT_REQUESTS: ::grpcio::Method<super::haberdasher::AgentResponse, super::haberdasher::AgentRequest> = ::grpcio::Method {
     ty: ::grpcio::MethodType::Duplex,
     name: "/haberdasher.AgentSubscriber/HandleAgentRequests",
-    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
-    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
+    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pr_ser, de: ::grpcio::pr_de },
+    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pr_ser, de: ::grpcio::pr_de },
 };
 
 const METHOD_AGENT_SUBSCRIBER_PUBLISH_VENUE_UPDATES: ::grpcio::Method<super::haberdasher::Venue, super::haberdasher::Empty> = ::grpcio::Method {
     ty: ::grpcio::MethodType::ClientStreaming,
     name: "/haberdasher.AgentSubscriber/PublishVenueUpdates",
-    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
-    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
+    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pr_ser, de: ::grpcio::pr_de },
+    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pr_ser, de: ::grpcio::pr_de },
 };
 
+#[derive(Clone)]
 pub struct AgentSubscriberClient {
     client: ::grpcio::Client,
 }
@@ -74,7 +75,7 @@ pub fn create_agent_subscriber<S: AgentSubscriber + Send + Clone + 'static>(s: S
     builder = builder.add_duplex_streaming_handler(&METHOD_AGENT_SUBSCRIBER_HANDLE_AGENT_REQUESTS, move |ctx, req, resp| {
         instance.handle_agent_requests(ctx, req, resp)
     });
-    let mut instance = s.clone();
+    let mut instance = s;
     builder = builder.add_client_streaming_handler(&METHOD_AGENT_SUBSCRIBER_PUBLISH_VENUE_UPDATES, move |ctx, req, resp| {
         instance.publish_venue_updates(ctx, req, resp)
     });
@@ -84,10 +85,11 @@ pub fn create_agent_subscriber<S: AgentSubscriber + Send + Clone + 'static>(s: S
 const METHOD_AGENT_AGGREGATOR_SUBSCRIBE_TO_VENUE_UPDATES: ::grpcio::Method<super::haberdasher::Empty, super::haberdasher::Venue> = ::grpcio::Method {
     ty: ::grpcio::MethodType::ServerStreaming,
     name: "/haberdasher.AgentAggregator/SubscribeToVenueUpdates",
-    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
-    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pb_ser, de: ::grpcio::pb_de },
+    req_mar: ::grpcio::Marshaller { ser: ::grpcio::pr_ser, de: ::grpcio::pr_de },
+    resp_mar: ::grpcio::Marshaller { ser: ::grpcio::pr_ser, de: ::grpcio::pr_de },
 };
 
+#[derive(Clone)]
 pub struct AgentAggregatorClient {
     client: ::grpcio::Client,
 }
@@ -117,7 +119,7 @@ pub trait AgentAggregator {
 
 pub fn create_agent_aggregator<S: AgentAggregator + Send + Clone + 'static>(s: S) -> ::grpcio::Service {
     let mut builder = ::grpcio::ServiceBuilder::new();
-    let mut instance = s.clone();
+    let mut instance = s;
     builder = builder.add_server_streaming_handler(&METHOD_AGENT_AGGREGATOR_SUBSCRIBE_TO_VENUE_UPDATES, move |ctx, req, resp| {
         instance.subscribe_to_venue_updates(ctx, req, resp)
     });
