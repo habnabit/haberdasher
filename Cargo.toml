@@ -7,6 +7,7 @@ members = [
     "clacks_rpc",
     "clacks_tl_codegen",
     "clacks_transport",
+    "grpc-rs",
     "haberdasher_rpc",
     "haberdasherd",
     "haberdasher_irc_agent",
