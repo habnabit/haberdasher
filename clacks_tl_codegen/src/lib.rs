@@ -1770,6 +1770,7 @@ impl Constructors<TypeIR, FieldIR> {
 
         quote! {
             #[derive(Debug, Clone, Serialize, Deserialize)]
+            #[serde(tag = "_type")]
             #[doc = #doc]
             pub enum #name {
                 #( #variants , )*
