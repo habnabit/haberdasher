@@ -190,9 +190,18 @@ pub trait Actor: Sized + 'static {
         Self: Actor<Context = Context<Self>>,
         F: FnOnce(&mut Context<Self>) -> Self + 'static,
     {
+        Self::try_create(move |c| Ok::<Self, ()>(f(c)))
+            .unwrap_or_else(|()| unreachable!())
+    }
+
+    fn try_create<F, E>(f: F) -> Result<Addr<Self>, E>
+    where
+        Self: Actor<Context = Context<Self>>,
+        F: FnOnce(&mut Context<Self>) -> Result<Self, E> + 'static,
+    {
         let mut ctx = Context::new();
-        let act = f(&mut ctx);
-        ctx.run(act)
+        let act = f(&mut ctx)?;
+        Ok(ctx.run(act))
     }
 }
 
