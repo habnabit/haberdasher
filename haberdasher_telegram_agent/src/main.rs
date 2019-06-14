@@ -13,13 +13,14 @@ use futures::prelude::*;
 use futures::task::Spawn;
 use structopt::StructOpt;
 
+mod backoff;
 mod config;
 mod console;
 //mod real_shutdown;
 //pub use self::real_shutdown::RealShutdown;
 
 mod tg_manager;
-//mod publisher;
+mod publisher;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "haberdasher_telegram_agent")]
@@ -105,7 +106,7 @@ fn main() -> Result<()> {
 
     let opts = Opt::from_args();
     let test_mode = opts.test_mode;
-    let self::config::AgentConfig { db, telegram, .. } = config::load_config_file(&opts.config)?;
+    let self::config::AgentConfig { db, telegram, haberdasher } = config::load_config_file(&opts.config)?;
     let db = sled::Db::start_default(&db.path)?;
     let tree = db.open_tree("legacy")?;
 
@@ -142,6 +143,7 @@ fn main() -> Result<()> {
                 let connect = tg_manager::Connect {
                     phone_number, test_mode,
                     dc_id: None,
+                    venue_tx: None,
                     read_auth_code: Some(code_reader.recipient()),
                 };
                 Arbiter::spawn_fn(move || {
@@ -162,10 +164,18 @@ fn main() -> Result<()> {
                 })
             }
             Command::Run {} => {
+                let (venue_tx, venue_rx) = futures::channel::mpsc::channel(5);
+                let publisher = publisher::PublishDriver::try_create({
+                    move |ctx| publisher::PublishDriver::from_context(ctx, haberdasher.token, venue_rx)
+                });
+                std::mem::forget(venue_tx.clone());
                 let to_spawn: futures::stream::FuturesUnordered<_> = telegram.users.into_iter()
                     .map(move |phone_number| {
+                        let venue_tx = Some(venue_tx.clone());
                         let spawned = phone_number.clone();
-                        let fut = tg_manager.send(tg_manager::SpawnClient { phone_number, test_mode });
+                        let fut = tg_manager.send(tg_manager::SpawnClient {
+                            phone_number, test_mode, venue_tx,
+                        });
                         async move {
                             (spawned, mailbox_lift(fut.compat().await))
                         }

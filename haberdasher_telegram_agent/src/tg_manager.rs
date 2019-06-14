@@ -8,6 +8,7 @@ use slog::Logger;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use haberdasher_rpc::haberdasher as protos;
 
 use crate::config::{Entry, TelegramDatacenter, TelegramServersV1, UserAuthKey, UserAuthKeyV1, UserData, UserDataV1};
 use crate::{FullTokioSpawn, Result};
@@ -60,6 +61,7 @@ pub struct Connect {
     pub phone_number: String,
     pub test_mode: bool,
     pub dc_id: Option<u32>,
+    pub venue_tx: Option<futures::channel::mpsc::Sender<protos::Venue>>,
     pub read_auth_code: Option<Recipient<client::ReadAuthCode>>,
 }
 
@@ -98,6 +100,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: Connect, ctx) -> (Us
         };
         let delegate = Delegate {
             log: log.new(o!("subsystem" => "delegate")),
+            venue_tx: req.venue_tx.clone(),
         }.start();
         client.send(client::SetDelegates {
             delegates: client::EventDelegates {
@@ -172,6 +175,7 @@ fn save_config(config: mtproto::config::Config, save_to: &sled::Tree) -> Result<
 pub struct SpawnClient {
     pub phone_number: String,
     pub test_mode: bool,
+    pub venue_tx: Option<futures::channel::mpsc::Sender<protos::Venue>>,
 }
 
 impl Message for SpawnClient {
@@ -182,6 +186,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: SpawnClient, ctx) ->
     let connect = Connect {
         phone_number: req.phone_number,
         test_mode: req.test_mode,
+        venue_tx: req.venue_tx,
         dc_id: None,
         read_auth_code: None,
     };
@@ -209,6 +214,7 @@ async_handler!(fn handle()(this: TelegramManagerActor, req: SpawnClient, ctx) ->
 
 struct Delegate {
     log: Logger,
+    venue_tx: Option<futures::channel::mpsc::Sender<protos::Venue>>,
 }
 
 impl Handler<client::Unhandled> for Delegate {
