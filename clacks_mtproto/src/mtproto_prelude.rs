@@ -100,7 +100,7 @@ impl_byteslike!(@common bytes);
 impl_byteslike!(@arraylike int128);
 impl_byteslike!(@arraylike int256);
 
-pub struct TLObject(Box<AnyBoxedSerialize>);
+pub struct TLObject(Box<dyn AnyBoxedSerialize>);
 
 impl TLObject {
     pub fn new<I: AnyBoxedSerialize>(inner: I) -> Self {
@@ -239,7 +239,7 @@ impl<'de> serde::Deserialize<'de> for TLObject {
 }
 
 impl BoxedSerialize for TLObject {
-    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &dyn BareSerialize) {
         self.0.serialize_boxed()
     }
 }
@@ -282,7 +282,7 @@ impl BoxedDeserialize for TransparentGunzip {
 }
 
 impl BoxedSerialize for TransparentGunzip {
-    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &dyn BareSerialize) {
         self.inner.serialize_boxed()
     }
 }
@@ -296,7 +296,7 @@ impl serde::Serialize for TransparentGunzip {
 }
 
 impl<'de> serde::Deserialize<'de> for TransparentGunzip {
-    fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+    fn deserialize<D>(_deserializer: D) -> ::std::result::Result<Self, D::Error>
         where D: serde::Deserializer<'de>,
     {
         unimplemented!()
@@ -375,7 +375,7 @@ impl BoxedDeserialize for bool {
 }
 
 impl BoxedSerialize for bool {
-    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &dyn BareSerialize) {
         let b: &'static Bool = (*self).into();
         Bool::serialize_boxed(b)
     }
@@ -410,7 +410,7 @@ impl<T> BoxedDeserialize for Box<T>
 impl<T> BoxedSerialize for Box<T>
     where T: BoxedSerialize,
 {
-    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
+    fn serialize_boxed(&self) -> (ConstructorNumber, &dyn BareSerialize) {
         T::serialize_boxed(self)
     }
 }
@@ -523,7 +523,7 @@ macro_rules! impl_vector {
         impl<T> BoxedSerialize for Vector<$det, T>
             where Self: BareSerialize,
         {
-            fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize) {
+            fn serialize_boxed(&self) -> (ConstructorNumber, &dyn BareSerialize) {
                 (VECTOR_CONSTRUCTOR, self)
             }
         }

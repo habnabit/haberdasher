@@ -1397,7 +1397,7 @@ impl Constructor<TypeIR, FieldIR> {
             }
 
             impl #serialize_generics ::BoxedSerialize for #name #impl_generics {
-                fn serialize_boxed(&self) -> (::ConstructorNumber, &::BareSerialize) {
+                fn serialize_boxed(&self) -> (::ConstructorNumber, &dyn (::BareSerialize)) {
                     (#tl_id, self)
                 }
             }
@@ -1645,7 +1645,7 @@ impl Constructors<TypeIR, FieldIR> {
         quote! {
 
             impl ::BoxedSerialize for #name {
-                fn serialize_boxed(&self) -> (::ConstructorNumber, &::BareSerialize) {
+                fn serialize_boxed(&self) -> (::ConstructorNumber, &dyn (::BareSerialize)) {
                     #serialize
                 }
             }
@@ -1677,7 +1677,7 @@ impl Constructors<TypeIR, FieldIR> {
         quote! {
 
             impl ::BoxedSerialize for Option<#nonempty_variant> {
-                fn serialize_boxed(&self) -> (::ConstructorNumber, &::BareSerialize) {
+                fn serialize_boxed(&self) -> (::ConstructorNumber, &dyn (::BareSerialize)) {
                     match *self {
                         None => (#empty_id, &()),
                         Some(ref x) => (#nonempty_id, x),

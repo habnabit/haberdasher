@@ -45,11 +45,11 @@ pub struct InvalidConstructor {
 pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
 
 pub struct Deserializer<'r> {
-    reader: &'r mut io::Read,
+    reader: &'r mut dyn io::Read,
 }
 
 impl<'r> Deserializer<'r> {
-    pub fn new(reader: &'r mut io::Read) -> Self {
+    pub fn new(reader: &'r mut dyn io::Read) -> Self {
         Deserializer { reader }
     }
 
@@ -104,7 +104,7 @@ pub trait BoxedDeserialize
 
 pub trait BoxedDeserializeDynamic: BoxedDeserialize + for<'de> serde::Deserialize<'de> {
     fn boxed_deserialize_to_box(id: ConstructorNumber, de: &mut Deserializer) -> Result<mtproto::TLObject>;
-    fn serde_deserialize_to_box(de: &mut erased_serde::Deserializer) -> ::std::result::Result<mtproto::TLObject, erased_serde::Error>;
+    fn serde_deserialize_to_box(de: &mut dyn erased_serde::Deserializer) -> ::std::result::Result<mtproto::TLObject, erased_serde::Error>;
 }
 
 impl<D> BoxedDeserializeDynamic for D
@@ -114,7 +114,7 @@ impl<D> BoxedDeserializeDynamic for D
         Ok(mtproto::TLObject::new(D::deserialize_boxed(id, de)?))
     }
 
-    fn serde_deserialize_to_box(de: &mut erased_serde::Deserializer) -> ::std::result::Result<mtproto::TLObject, erased_serde::Error>
+    fn serde_deserialize_to_box(de: &mut dyn erased_serde::Deserializer) -> ::std::result::Result<mtproto::TLObject, erased_serde::Error>
     {
         Ok(mtproto::TLObject::new(erased_serde::deserialize::<D>(de)?))
     }
@@ -125,7 +125,7 @@ pub struct DynamicDeserializer {
     id: ConstructorNumber,
     type_name: &'static str,
     mtproto: fn(ConstructorNumber, &mut Deserializer) -> Result<mtproto::TLObject>,
-    serde: fn(&mut erased_serde::Deserializer) -> ::std::result::Result<mtproto::TLObject, erased_serde::Error>,
+    serde: fn(&mut dyn erased_serde::Deserializer) -> ::std::result::Result<mtproto::TLObject, erased_serde::Error>,
 }
 
 impl DynamicDeserializer {
@@ -140,11 +140,11 @@ impl DynamicDeserializer {
 }
 
 pub struct Serializer<'w> {
-    writer: &'w mut io::Write,
+    writer: &'w mut dyn io::Write,
 }
 
 impl<'w> Serializer<'w> {
-    pub fn new(writer: &'w mut io::Write) -> Self {
+    pub fn new(writer: &'w mut dyn io::Write) -> Self {
         Serializer { writer }
     }
 
@@ -189,7 +189,7 @@ pub trait BareSerialize {
 }
 
 pub trait BoxedSerialize {
-    fn serialize_boxed(&self) -> (ConstructorNumber, &BareSerialize);
+    fn serialize_boxed(&self) -> (ConstructorNumber, &dyn BareSerialize);
 
     fn boxed_serialized_bytes(&self) -> Result<Vec<u8>> {
         let mut buf: Vec<u8> = vec![];
@@ -204,13 +204,13 @@ pub trait IntoBoxed: BareSerialize {
 }
 
 pub trait AnyBoxedSerialize: Any + Send + BoxedSerialize + erased_serde::Serialize {
-    fn as_any(&self) -> &Any;
-    fn into_boxed_any(self: Box<Self>) -> Box<Any + Send>;
+    fn as_any(&self) -> &dyn Any;
+    fn into_boxed_any(self: Box<Self>) -> Box<dyn Any + Send>;
 }
 
 impl<T: Any + Send + BoxedSerialize + erased_serde::Serialize> AnyBoxedSerialize for T {
-    fn as_any(&self) -> &Any { self }
-    fn into_boxed_any(self: Box<Self>) -> Box<Any + Send> { self }
+    fn as_any(&self) -> &dyn Any { self }
+    fn into_boxed_any(self: Box<Self>) -> Box<dyn Any + Send> { self }
 }
 
 serialize_trait_object!(AnyBoxedSerialize);
