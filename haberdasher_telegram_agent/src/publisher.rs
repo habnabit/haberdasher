@@ -3,13 +3,7 @@ use futures::compat::*;
 use futures::prelude::*;
 use haberdasher_rpc::haberdasher as protos;
 use haberdasher_rpc::haberdasher_grpc as rpc;
-use serde::Deserialize;
-use tokio::prelude::*;
 use actix::prelude::*;
-use futures::stream::Stream;
-use clacks_rpc::client;
-use std::pin::Pin;
-use slog::Logger;
 
 use crate::Result;
 use crate::backoff::BackedOff;

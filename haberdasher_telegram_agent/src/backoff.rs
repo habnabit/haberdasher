@@ -1,8 +1,6 @@
 use backoff::backoff::Backoff;
-use futures::stream::{Stream, unfold};
-use futures_timer::{Delay, TimerHandle};
+use futures_timer::Delay;
 use std::future::Future;
-use std::time::Instant;
 
 pub struct BackedOff<'a, F> {
     initial: bool,
